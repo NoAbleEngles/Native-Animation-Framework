@@ -13,7 +13,7 @@ class slog
 {
 public:
 	// Метод для получения единственного экземпляра логгера
-	static slog& getInstance(const std::string& filename = "E:\\Games\\Fallout 4\\MO2\\mods\\NAFicator\\NAFicator\\log.txt")
+	static slog& getInstance(const std::string& filename = "Data/NAFicator/log.txt")
 	{
 		static slog instance(filename);  // Статический экземпляр
 		return instance;
@@ -88,7 +88,7 @@ private:
 		#ifndef NOLOG
 		log_file.open(filename, std::ios::app);  // Открываем файл в режиме добавления
 		if (!log_file.is_open()) {
-			std::cerr << "Не удалось открыть файл для логирования!" << std::endl;
+			std::cerr << "Couldn't open file for logging!" << std::endl;
 		}
 		#endif
 	}

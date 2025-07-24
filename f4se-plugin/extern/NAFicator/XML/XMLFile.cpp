@@ -50,7 +50,7 @@ XMLfile::XMLfile(const std::filesystem::path& source_file) :
 	read.close();
 	normalize();
 
-	if (!hasValue)
+	if (hasValue)
 		LOG("normalize... success\nprepare to make objects...");
 	else
 		LOG("{} normalize... failed, file skipped", filename());
