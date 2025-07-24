@@ -1,5 +1,7 @@
 #pragma once
 #include "Menu/NAFHUDMenu/SceneHUD.h"
+#include "Scene/SceneManager.h" //NAF Bridge
+
 
 namespace Scene
 {
@@ -96,6 +98,7 @@ namespace Scene
 				auto groupInfo = static_cast<Data::Position::AnimationGroupInfo*>(info);
 				group = groupInfo->group;
 
+				//NAF Bridge ctd
 				if (!group->sequential) {
 					for (size_t i = 0; i < group->stages.size(); i++) {
 						weights.push_back({ group->stages[i].weight, i });
@@ -235,8 +238,10 @@ namespace Scene
 				return true;
 			} else {
 				CheckParentPointer();
-				if (parent != nullptr)
+				if (parent != nullptr) {
 					return parent->PushQueuedControlSystem();
+				}
+
 				return false;
 			}
 		}
@@ -323,7 +328,22 @@ namespace Scene
 				auto treeInfo = static_cast<Data::Position::PositionTreeInfo*>(info);
 				tree = treeInfo->tree;
 				currentNode = tree->tree;
-			}
+				//NAF Bridge offset
+#pragma warning(push)
+#pragma warning(disable: 4457)
+				{
+					std::shared_ptr<IScene> scn;
+					if (SceneManager::GetScene(parentId, scn)) {
+						if (scn && currentNode) {
+							scn->currentPosition = Data::GetPosition(currentNode->position);
+						}
+					}
+					if (scn)
+						scn->Update3dPos();
+				}
+#pragma warning(pop)
+				//NAF Bridge end
+			}	
 		}
 
 		virtual void OnBegin(IControllable* scn, std::string_view lastId) override

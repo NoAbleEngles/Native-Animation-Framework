@@ -13,12 +13,14 @@ namespace Data
 
 			m(&out.startEquipSet, std::optional<std::string>(std::nullopt), true, false, "", "startEquipmentSet");
 			m(&out.stopEquipSet, std::optional<std::string>(std::nullopt), true, false, "", "stopEquipmentSet");
+			m(&out.mfgSet, std::optional<std::string>(std::nullopt), true, false, "", "mfgSet"); //NAF Bridge
 
 			return m;
 		}
 
 		std::optional<std::string> startEquipSet;
 		std::optional<std::string> stopEquipSet;
+		std::optional<std::string> mfgSet;
 
 		void RunStart(RE::Actor* a) const;
 		void RunStop(RE::Actor* a) const;

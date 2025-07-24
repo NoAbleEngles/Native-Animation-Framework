@@ -1,5 +1,6 @@
 bool g_gameDataReady = false;
-
+#pragma once
+#include <string>
 #include "Data/Constants.h"
 #include "Misc/Utility.h"
 #include "Data/Events.h"
@@ -26,6 +27,14 @@ bool g_gameDataReady = false;
 #include "Scripts/Papyrus.h"
 #include "Serialization/Serialization.h"
 #include "API/API.h"
+//Bridge
+#include "Bridge/Bridge.h"
+#include "Bridge/Papyrus/Papyrus.h"
+#include <filesystem>
+#include "Bridge/IniParser/Ini.hpp"
+
+RE::BSScript::IVirtualMachine* g_VM;
+
 namespace
 {
 	void MessageHandler(F4SE::MessagingInterface::Message* a_msg)
@@ -38,6 +47,11 @@ namespace
 			case F4SE::MessagingInterface::kGameDataReady:
 			{
 				if (static_cast<bool>(a_msg->data)) {
+					if (GetModuleHandleA("NAFBridge.dll")) {
+						RE::MessageMenuManager::GetSingleton()->Create("NAF BRIDGE WARNING!",
+							"It seems you've been updated from older Bridge's version, but didn't delete NAFBridge.dll. You should delete it before you can proceed. It is in GameFolder/Data/F4SE/Plugins/NAFBridge.dll. \nIf you're using MO2 it will be placed in MO2/Mods/Bridge-mod-folder/F4SE/Plugins/NAFBridge.dll", nullptr, RE::WARNING_TYPES::kSystem);
+					}
+					
 					logger::info("Game data finished loading, registering NAF menu...");
 
 					auto ui = RE::UI::GetSingleton();
@@ -57,7 +71,275 @@ namespace
 					logger::info("Ready!");
 
 					g_gameDataReady = true;
+
 					Data::Events::Send(Data::Events::GAME_DATA_READY);
+
+					std::string file("");  
+					if (std::filesystem::exists(MCM_INI_PATH))
+						file = MCM_INI_PATH;
+
+					if (!file.empty()) {
+						ini::map map(file);
+
+						if (map.get<bool>("bdebugAnimations"s, "Debug"s))
+						{
+							[&]() {
+								for (auto ref : Data::Global::Animations) {
+									auto anim = ref.second.second.get();
+									std::string res("\n");
+
+									res += "ANIMATION id : ", res += anim->id;
+									res += "\n\tloadPriority : ", res += std::to_string(anim->loadPriority);
+									res += "\n\tactors count : ", res += std::to_string(anim->slots.size());
+									res += "\n\ttags : ";
+									for (auto& tag : anim->tags) {
+										res += "\n\t\t"s + tag.data();
+									}
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugPositions"s, "Debug"s)) {
+							auto getPosTypeString = [](size_t type) {
+								switch (type) {
+								case 0u:
+									return "kAnimation"s;
+								case 1u:
+									return "kAnimationGroup"s;
+								case 2u:
+									return "kPositionTree"s;
+								default:
+									std::string unknown("unknown type ");
+									unknown += type;
+									return unknown;
+								}
+							};
+
+							[&]() {
+								for (auto ref : Data::Global::Positions) {
+									auto pos = ref.second.second.get();
+									std::string res("\n");
+
+									res += "POSITION id : ", res += pos->id;
+									res += "\n\tBaseAnimation : ", res += pos->GetBaseAnimation().get()->id;
+									res += "\n\tHidden : ", res += pos->hidden ? "true" : "false";
+									res += "\n\tloadPriority : ", res += std::to_string(pos->loadPriority);
+									res += "\n\ttype : ", res += getPosTypeString(pos->posType);
+									res += "\n\tstartEquipSet : ", pos->startEquipSet;
+									res += "\n\tstopEquipSet : ", res += pos->stopEquipSet;
+									res += "\n\tstartMorphSet : ", res += pos->startMorphSet;
+									res += "\n\toffset : ", res += Scene::offset_to_string(pos->offset);
+
+									res += "\nTags : ";
+									for (auto t : pos->tags) {
+										res += "\n\t", res += t;
+									}
+
+									res += "Locations : ";
+									for (auto loc : pos->locations) {
+										res += "\n\t", res += loc;
+									}
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugFaceAnims"s, "Debug"s)) {
+							[&]() {
+								for (auto& ref : Data::Global::FaceAnims) {
+									auto fanim = ref.second.second.get();
+
+									std::string res("\n");
+									res += "FACE ANIM id : ", res += fanim->id;
+									res += "\n\tloadPriority : ", res += std::to_string(fanim->loadPriority);
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugMorphSets"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::MorphSets) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "MORPH SET id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+									res += "\n\tmorphs : ";
+									for (auto& mrph : m->morphs) {
+										res += "\n\t\tname : "s + mrph.second.data()->name + "\tvalue : "s + std::to_string(mrph.second.data()->value);
+									}
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugEquipmentSets"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::EquipmentSets) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "EQUIPMENT SET id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+									/*res += "\n\tbipedSlots : ";
+							for (auto& es : m->bipedSlotNames) {
+								res += "\n\t\t["s + std::to_string(es.second) + "]"s);
+							}
+							res += "\n\tequipmentData : ";
+							for (auto& ed : m->datas) {
+								res += "\n\t\t["s + std::to_string(ed.first.) + "]"s);
+							}*/
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugActions"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::Actions) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "ACTION id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugAnimationGroups"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::AnimationGroups) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "ANIMATION GROUP id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugPositionTrees"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::PositionTrees) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "POSITION TREE id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugRaces"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::Races) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "RACE id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+									res += "\n\tbaseForm : ", res += m->baseForm.get()->formEditorID;
+									if (m->startEvent.has_value())
+										res += "\n\tstartEvent : ", res += m->startEvent.value();
+									if (m->stopEvent.has_value())
+										res += "\n\tstopEvent : ", res += m->stopEvent.value();
+									if (m->graph.has_value())
+										res += "\n\tgraph : ", res += m->graph.value();
+									res += "\n\trequiresReset : ", res += m->requiresReset ? "true" : "false";
+									res += "\n\trequiresForceLoop : ", res += m->requiresForceLoop ? "true" : "false";
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugGraphInfos"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::GraphInfos) {
+									auto m = ref.second.second.get();
+									std::string res("\n");
+
+									res += "GRAPH INFO id : ", res += m->id;
+									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugOverlays"s, "Debug"s)) {
+							[&]() {
+								for (auto ref : Data::Global::Overlays) {
+									auto set = ref.second.second.get();
+									std::string res("\n");
+
+									res += "OVERLAY id : ", res += set->id;
+									res += "\n\tloadPriority : ", res += std::to_string(set->loadPriority);
+									res += "\n\tfileName : ", res += set->fileName;
+									res += "\n\tduration : ", res += std::to_string(set->duration);
+									res += "\n\tquantity : ", res += std::to_string(set->quantity);
+
+									res += "\noverlays : ";
+									for (auto o : set->overlays) {
+										res += "\n\ttemplate : ", res += o.Template;
+										res += "\talpha : ", res += std::to_string(o.alpha);
+										res += "\tisFemale : ", res += o.isFemale ? "true" : "false";
+									}
+
+									logger::info("{}\n", res);
+								}
+							}();
+						}
+
+						if (map.get<bool>("bdebugProtectedKeywords"s, "Debug"s)) {
+							[&]() {
+								std::string res("\n");
+								res += "PROTECTED KEYWORD : ";
+								auto formlist = RE::TESDataHandler::GetSingleton()->LookupForm<RE::BGSListForm>(0x31752, "AAF.esm"s);
+								for (auto& ProtectedKwds : formlist->arrayOfForms) {
+									res += "\n\tid : 0x", res += std::format("{:x}", ProtectedKwds->formID), res += "\t", res += ProtectedKwds->GetFormEditorID();
+								}
+								logger::info("{}\n", res);
+							}();
+						}
+
+						if (map.get<bool>("bdebugFurnitures"s, "Debug"s)) {
+							[&]() {
+								std::string res("\n");
+								auto formlist = RE::TESDataHandler::GetSingleton()->LookupForm<RE::BGSListForm>(0x2E7D, "AAF.esm"s);
+								if (formlist == nullptr)
+									return;
+								formlist->ClearData();
+
+								for (auto& el : Data::Global::Furnitures) {
+									auto furniture = el.second.second;
+									for (auto& form : furniture.get()->forms) {
+										formlist->arrayOfForms.push_back(form.get());
+									}
+								}
+
+								res += "PARSED FURNITURE : ";
+								for (auto form : RE::TESDataHandler::GetSingleton()->LookupForm<RE::BGSListForm>(0x2E7D, "AAF.esm"s)->arrayOfForms) {
+									if (form)
+										res += "\n\tid : 0x", res += std::format("{:x}", form->formID), res += "\t", res += form->GetFormEditorID();
+								}
+								logger::info("{}\n", res);
+							}();
+						}
+					}
 				}
 
 				break;
@@ -82,6 +364,8 @@ namespace
 		CamHook::RegisterHook();
 	}
 }
+
+void ReadIni();
 
 extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info)
 {
@@ -122,6 +406,9 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f4se)
 {
 	F4SE::Init(a_f4se);
+
+	ReadIni();
+
 	InitializeHooking();
 
 	const auto messaging = F4SE::GetMessagingInterface();
@@ -145,7 +432,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 	}
 
 	const auto papyrus = F4SE::GetPapyrusInterface();
-	if (!papyrus || !papyrus->Register(Papyrus::RegisterFunctions)) {
+	if (!papyrus || !papyrus->Register(Papyrus::RegisterFunctions) || !papyrus->Register(Papyrus::RegisterBridgeFunctions)) {
 		logger::critical("Failed to register Papyrus functions!");
 	} else {
 		logger::info("Registered Papyrus functions.");
@@ -153,7 +440,120 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 
 	Data::Global::Init();
 
-	logger::info("{:s} initialization successful, waiting for game data load.", Version::PROJECT);
+	bridge::InitializeBridge();
+
+	//logger::info("{:s} initialization successful, waiting for game data load.", Version::PROJECT);
+	logger::info("{:s} initialization successful, waiting for game data load.", PLUGINVERSTR);
 
 	return true;
+}
+
+void ReadIni()
+{
+	auto copyFile = [](const char* SRC, const char* DEST) {
+		std::ifstream src(SRC, std::ios::binary);
+		std::ofstream dest(DEST, std::ios::binary);
+		dest << src.rdbuf();
+		return src && dest;
+	};
+
+	auto GetDefaultSettings = []() {
+		std::string s("[Settings]\n");
+		s += "fdefaultDuration=60.000000\n"s;
+		s += "idefaultFurniturePrefence=10\n"s;
+		s += "fdefaultFurnitureScanRadius=3000.0\n"s;
+		s += "bdefaultIgnoreCombat=0\n"s;
+		s += "bdefaultSkipWalk=0\n"s;
+		s += "bdefaultSwapFemaleActorInArray=1\n"s;
+		s += "bdefaultHideHud=1\n"s;
+		s += "bdefaultSlowDrying=1\n"s;
+		s += "sdefaultExcludeTags=pose,utility\n"s;
+		s += "\n"s;
+		s += "[Overrides]\n"s;
+		s += "foverridesDuration=-1.000000\n"s;
+		s += "ioverridesFurniturePrefence=-1\n"s;
+		s += "foverridesFurnitureScanRadius=-500.000000\n"s;
+		s += "ioverridesIgnoreCombat=-1\n"s;
+		s += "ioverridesSkipWalk=-1\n"s;
+		s += "boverridesEmptyInclTags=0\n"s;
+		s += "\n"s;
+		s += "[Debug]\n"s;
+		s += "bdebugMessages=0\n"s;
+		s += "fdebugSlowScriptTime=0.000000\n"s;
+		s += "bdebugAnimations=0\n"s;
+		s += "bdebugPositions=0\n"s;
+		s += "bdebugFaceAnims=0\n"s;
+		s += "bdebugMorphSets=0\n"s;
+		s += "bdebugEquipmentSets=0\n"s;
+		s += "bdebugActions=0\n"s;
+		s += "bdebugAnimationGroups=0\n"s;
+		s += "bdebugPositionTrees=0\n"s;
+		s += "bdebugRaces=0\n"s;
+		s += "bdebugGraphInfos=0\n"s;
+		s += "bdebugOverlays=0\n"s;
+		s += "bdebugProtectedKeywords=0\n"s;
+		s += "bdebugFurnitures=0\n"s;
+		return s;
+	};
+
+	auto AllKeys = []() {
+		std::vector<std::tuple<std::string, std::string, std::string>> m;
+		m.push_back(std::tuple("60.000000"s, "fdefaultDuration"s, "Settings"s));
+		m.push_back(std::tuple("10"s, "idefaultFurniturePrefence"s, "Settings"s));
+		m.push_back(std::tuple("3000.0"s, "fdefaultFurnitureScanRadius"s, "Settings"s));
+		m.push_back(std::tuple("0"s, "bdefaultIgnoreCombat"s, "Settings"s));
+		m.push_back(std::tuple("0"s, "bdefaultSkipWalk"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bdefaultSwapFemaleActorInArray"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bdefaultHideHud"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bdefaultSlowDrying"s, "Settings"s));
+		m.push_back(std::tuple("pose,utility"s, "sdefaultExcludeTags"s, "Settings"s));
+
+		m.push_back(std::tuple("-1.000000"s, "foverridesDuration"s, "Overrides"s));
+		m.push_back(std::tuple("-1"s, "ioverridesFurniturePrefence"s, "Overrides"s));
+		m.push_back(std::tuple("-500.000000"s, "foverridesFurnitureScanRadius"s, "Overrides"s));
+		m.push_back(std::tuple("-1"s, "ioverridesIgnoreCombat"s, "Overrides"s));
+		m.push_back(std::tuple("-1"s, "ioverridesSkipWalk"s, "Overrides"s));
+		m.push_back(std::tuple("0"s, "boverridesEmptyInclTags"s, "Overrides"s));
+
+		m.push_back(std::tuple("0"s, "bdebugMessages"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "fdebugSlowScriptTime"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugAnimations"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugPositions"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugFaceAnims"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugMorphSets"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugEquipmentSets"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugActions"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugAnimationGroups"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugPositionTrees"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugRaces"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugGraphInfos"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugOverlays"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugProtectedKeywords"s, "Debug"s));
+		m.push_back(std::tuple("0"s, "bdebugFurnitures"s, "Debug"s));
+		return m;
+	};
+
+	std::string file = [copyFile, GetDefaultSettings]() {
+		if (std::filesystem::exists(MCM_INI_PATH)) {
+			return std::string(MCM_INI_PATH);
+		} else if (std::filesystem::exists(MCM_INI_PATH_ALT)) {
+			std::ofstream file(MCM_INI_PATH_ALT);
+			if (file.is_open()) {
+				file << GetDefaultSettings();
+				file.close();
+				copyFile(MCM_INI_PATH_ALT, MCM_INI_PATH);
+				return std::string(MCM_INI_PATH);
+			}
+		}
+		return ""s;
+	}();
+
+	if (!file.empty()) {
+		ini::map map(file);
+		std::vector<std::tuple<std::string, std::string, std::string>> settings = AllKeys();
+		for (auto& s : settings) {
+			if (!map.contains(get<1>(s), get<2>(s)))
+				map.set(get<0>(s), get<1>(s), get<2>(s));
+		}
+	}
 }

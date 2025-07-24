@@ -436,7 +436,7 @@ namespace Scene
 
 			for (auto& aNi : actors) {
 				auto a = aNi.get();
-				if (!GameUtil::ActorIsAlive(a, false) || a->HasKeyword(Data::Forms::ActorTypeChildKW)) {
+				if ((a != player) && ((!GameUtil::ActorIsAlive(a, false)) || a->HasKeyword(Data::Forms::ActorTypeChildKW))) {
 					return { kInvalidActor };
 				} else if (IsActorInScene(a, ignoreInScene)) {
 					return { kActorInScene };

@@ -230,7 +230,7 @@ namespace Scene
 		std::string startEquipSet;
 		std::string stopEquipSet;
 		SceneSettings settings;
-
+		std::shared_ptr<const Data::Position> currentPosition = settings.startPosition;  //NAFBridge offsets
 		IScene()
 		{
 		}
@@ -285,6 +285,8 @@ namespace Scene
 		virtual void SetAnimMult(float) {}
 
 		virtual void SetSyncState(SyncState) {}
+
+		virtual void Update3dPos() {} //NAF Bridge offset
 
 		void ForEachActor(std::function<void(RE::Actor*, ActorPropertyMap&)> func, bool require3d = true)
 		{

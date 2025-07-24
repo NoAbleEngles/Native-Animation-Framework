@@ -8,6 +8,7 @@ namespace Data
 	public:
 		struct Slot
 		{
+			//Bridge offset
 			template <typename T>
 			struct integrated_optional
 			{
@@ -45,7 +46,8 @@ namespace Data
 				bool hasVal;
 				T val;
 			};
-			
+			//Bridge offset end
+
 			ActorGender gender;
 			bool behaviorRequiresConvert = false;
 			bool idleRequiresConvert = false;
@@ -258,9 +260,12 @@ namespace Data
 					s.idle[0] = tmp;
 					s.idle[1] = "default";
 				} else {
-					m.GetOptNode(&tmp, XMLUtil::Mapper::emptyStr, "idle", true, true, "Animation actor node has no idle source!", "idleSource", "source");
+					//NAFBridge empty idles patch
+					//m.GetOptNode(&tmp, XMLUtil::Mapper::emptyStr, "idle", true, true, "Animation actor node has no idle source!", "idleSource", "source");
+					m.GetOptNode(&tmp, XMLUtil::Mapper::emptyStr, "idle", true, false, "Animation actor node has no idle source! Probably it is stop idle, then it is okay!", "idleSource", "source");
 					s.idle[0] = tmp;
-					m.GetOptNode(&tmp, XMLUtil::Mapper::emptyStr, "idle", true, true, "Animation actor node has no idle form!", "idleForm", "idle", "form");
+					//m.GetOptNode(&tmp, XMLUtil::Mapper::emptyStr, "idle", true, true, "Animation actor node has no idle form!", "idleForm", "idle", "form");
+					m.GetOptNode(&tmp, XMLUtil::Mapper::emptyStr, "idle", true, false, "Animation actor node has no idle form! Probably it is stop idle, then it is okay!", "idleForm", "idle", "form");
 					s.idle[1] = tmp;
 				}
 				

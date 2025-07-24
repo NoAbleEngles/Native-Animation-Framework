@@ -207,12 +207,9 @@ namespace FaceAnimation
 			state->managedDatas[GameUtil::GetFaceAnimData(a.get())] = targetActor;
 		}
 
-		bool LoadAndPlayAnimation(RE::ActorHandle targetActor, std::string id, bool loop = false, bool havokSync = false)
+		//NAF Bridge
+		inline bool LoadAndPlayAnimationNoCheck(RE::ActorHandle targetActor, std::string id, bool loop = true, bool havokSync = false)
 		{
-			if (auto targetAnim = Data::GetFaceAnim(id); targetAnim == nullptr) {
-				return false;
-			}
-
 			auto newAnim = std::make_unique<FaceAnimation>();
 			newAnim->loop = loop;
 			newAnim->havokSync = havokSync;
@@ -233,6 +230,35 @@ namespace FaceAnimation
 			}).detach();
 
 			return true;
+		}
+
+		bool LoadAndPlayAnimation(RE::ActorHandle targetActor, std::string id, bool loop = false, bool havokSync = false)
+		{
+			if (Data::GetFaceAnim(id) == nullptr) {
+				return false;
+			}
+			//NAF Bridge
+			/*auto newAnim = std::make_unique<FaceAnimation>();
+			newAnim->loop = loop;
+			newAnim->havokSync = havokSync;
+
+			std::unique_lock l{ loadingAnimsLock };
+			loadingAnims[targetActor] = id;
+			l.unlock();
+
+			std::thread([targetActor = std::move(targetActor), inst = std::move(newAnim), id = std::move(id)]() mutable {
+				bool successful = inst->LoadData(id);
+				std::unique_lock l{ loadingAnimsLock };
+				if (loadingAnims.contains(targetActor) && loadingAnims[targetActor] == id) {
+					loadingAnims.erase(targetActor);
+					if (successful) {
+						StartAnimation(targetActor, std::move(inst), id);
+					}
+				}
+			}).detach();
+
+			return true;*/
+			return LoadAndPlayAnimationNoCheck(targetActor, id, loop, havokSync); //NAF Bridge
 		}
 
 		void StopAnimation(RE::ActorHandle targetActor, bool animOverride = false) {
