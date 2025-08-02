@@ -416,6 +416,7 @@ namespace Scene
 			tasks.StopAll();
 			SetAnimMult(100);
 
+			int count = 0; // NAF Bridge fix scale after scene if scale was overridden
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap& props) {
 				currentActor->EnableCollision();
 				currentActor->SetNoCollision(false);
@@ -443,9 +444,31 @@ namespace Scene
 					currentActor->EvaluatePackage(false, true);
 				}
 
-				if (!Data::Settings::Values.bDisableRescaler) {
+				auto getSerializableActorHandle = [this](RE::Actor* actor) {
+					for (auto& el : actors) {
+						if (el.first.get().get() == actor) {
+							return el.first;
+						}
+					}
+					return SerializableActorHandle{};
+				};
+
+				// NAF Bridge fix scale after scene if scale was overridden
+				/*if (!Data::Settings::Values.bDisableRescaler) {
 					currentActor->SetScale(1.0f);
+				}*/
+
+				if (settings.initialScales.empty()) {
+					if (!Data::Settings::Values.bDisableRescaler) {
+						currentActor->SetScale(1.0f);
+					}
+				} else {
+					auto& initialScales = settings.initialScales;
+					if (count < initialScales.size())
+						currentActor->SetScale(initialScales[count]);
 				}
+				++count;
+				// NAF Bridge fix scale end
 			},
 				false);
 
@@ -970,6 +993,9 @@ namespace Scene
 				}*/
 			}
 			//NAFBridge end
+			//NAF Bridge scale fix : save initial scale 
+			newScene->settings.initialScales.push_back(a->GetScale());
+			//NAF Bridge scale fix end
 			if (a->parentCell != locationRef->parentCell)
 				a->WarpToRef(locationRef.get());
 		}

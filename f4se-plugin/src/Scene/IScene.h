@@ -183,6 +183,7 @@ namespace Scene
 		float duration = 0.0f;
 		bool autoAdvance = false;
 		bool ignoreCombat = false;
+		std::vector<float> initialScales;  //NAF Bridge fix scale after scene if scale was overridden, fills in for_each_actor if scale changed.
 
 		std::vector<RE::NiPointer<RE::Actor>> QActors() const {
 			std::vector<RE::NiPointer<RE::Actor>> result;
@@ -201,7 +202,8 @@ namespace Scene
 		template <class Archive>
 		void serialize(Archive& ar, const uint32_t)
 		{
-			ar(actors, startPosition, locationRefr, duration, autoAdvance, ignoreCombat);
+			//ar(actors, startPosition, locationRefr, duration, autoAdvance, ignoreCombat);
+			ar(actors, startPosition, locationRefr, duration, autoAdvance, ignoreCombat, initialScales);  //NAF Bridge fix scale after scene if scale was overridden
 		}
 	};
 
@@ -231,9 +233,7 @@ namespace Scene
 		std::string stopEquipSet;
 		SceneSettings settings;
 		std::shared_ptr<const Data::Position> currentPosition = settings.startPosition;  //NAFBridge offsets
-		IScene()
-		{
-		}
+		IScene() {}
 
 		virtual bool PushQueuedControlSystem() { return false; }
 
