@@ -388,7 +388,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 	spdlog::set_default_logger(std::move(log));
 	spdlog::set_pattern("[%m/%d/%Y - %T] [%^%l%$] %v"s);
 
-	logger::info("{} v{}", Version::PROJECT, Version::NAME);
+	//logger::info("{} v{}", Version::PROJECT, Version::NAME);
+	logger::info("{}", PLUGINVERSTR);
 
 	if (a_f4se->IsEditor()) {
 		return false;
@@ -396,7 +397,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 
 	const auto ver = a_f4se->RuntimeVersion();
 	if (ver < F4SE::RUNTIME_1_10_162) {
-		logger::critical("{} does not support runtime v{}", Version::PROJECT, ver.string());
+		//logger::critical("{} does not support runtime v{}", Version::PROJECT, ver.string());
+		logger::critical("{} does not support runtime v{}", PLUGINVERSTR, ver.string());
 		return false;
 	}
 
