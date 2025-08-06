@@ -464,8 +464,21 @@ namespace Scene
 					}
 				} else {
 					auto& initialScales = settings.initialScales;
-					if (count < initialScales.size())
+		
+					constexpr float EPSILON = 0.001f;
+					auto not_equal = [](float a, float b) {
+						
+						return std::fabs(a - b) > EPSILON;
+					};
+
+					if (count < initialScales.size()) {
 						currentActor->SetScale(initialScales[count]);
+						float iScale = currentActor->GetScale();
+						// Needs because scale is refScale * baseScale, and getScale() returns refScale * baseScale, but SetScale() sets refScale only.
+						if (not_equal(iScale, initialScales[count]) && std::fabs(iScale) > EPSILON) {
+							currentActor->SetScale(initialScales[count] / (iScale / initialScales[count]));
+						}
+					}
 				}
 				++count;
 				// NAF Bridge fix scale end

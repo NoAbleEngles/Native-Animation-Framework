@@ -20,7 +20,7 @@
 			if (Serialization::General::LoadRecord(_recordName, state)) {                       \
 				auto& scenes = state->scenes;                                                   \
 				for (auto& [id, scn] : scenes) {                                                \
-					if (scn && !scn->settings.actors.empty()) {                                 \
+					if (scn) {																	\
 						std::reverse(scn->settings.actors.begin(), scn->settings.actors.end()); \
 					}                                                                           \
 				}                                                                               \
