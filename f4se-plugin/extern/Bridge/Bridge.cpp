@@ -8,7 +8,7 @@
 
 #include "Data/Constants.h"
 #include "Bridge/Bridge.h"
-#include "Bridge/IniParser/Ini.hpp"
+#include "Bridge/IniParser/Ini.h"
 
 extern int PRINT_LOG;
 

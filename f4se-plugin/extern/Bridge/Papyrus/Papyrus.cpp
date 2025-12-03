@@ -7,6 +7,7 @@
 #include "Bridge/Papyrus/Papyrus.h"
 #include <random>
 
+namespace logger = F4SE::log;
 
 #define PAPYRUS_BIND(funcName) a_VM->BindNativeMethod("NAFBridge", #funcName, funcName, true)
 #define PAPYRUS_BIND_LATENT(funcName, retType) a_VM->BindNativeMethod<retType>("NAFBridge", #funcName, funcName, true, true)
@@ -28,6 +29,7 @@ namespace Papyrus
 		PAPYRUS_BIND(CutFormList);
 		PAPYRUS_BIND(IsPreCulled);
 
+		logger::info("NAFBridge functions registered.");
 		return true;
 	}
 	
