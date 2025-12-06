@@ -435,7 +435,11 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 	}
 
 	const auto papyrus = F4SE::GetPapyrusInterface();
-	if (!papyrus || !papyrus->Register(Papyrus::RegisterFunctions) || !papyrus->Register(Papyrus::RegisterBridgeFunctions) || !papyrus->Register(Papyrus::RegisterNAFUtilsFunctions)) {
+	if (!papyrus || 
+		!papyrus->Register(Papyrus::RegisterFunctions) 
+		|| !papyrus->Register(Papyrus::RegisterBridgeFunctions) 
+		|| !papyrus->Register(Papyrus::RegisterNAFUtilsFunctions)) 
+	{
 		logger::critical("Failed to register Papyrus functions!");
 	} else {
 		logger::info("Registered Papyrus functions.");

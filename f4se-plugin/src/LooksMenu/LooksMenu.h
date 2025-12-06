@@ -150,39 +150,36 @@ namespace LooksMenu
 		UniqueID m_highestUID;
 		std::unordered_map<F4EEFixedString, OverlayTemplatePtr> m_overlayTemplates[2];
 		friend bool HookedRemoveOverlay(OverlayInterface* OverlayInterface, RE::Actor* actor, bool isFemale, UniqueID uid);
+
+		// RemoveAll
+		friend bool HookedRemoveAll(OverlayInterface* OverlayInterface, RE::Actor* actor, bool isFemale);
 	};
 
 	bool HookedRemoveOverlay(OverlayInterface* overlayInterface, RE::Actor* actor, bool isFemale, UniqueID uid)
 	{
 		RE::BSSpinLock locker(overlayInterface->m_overlayLock);
-		auto hit = overlayInterface->m_overlays[isFemale ? 1 : 0].find(actor->formID);
-		if (hit == overlayInterface->m_overlays[isFemale ? 1 : 0].end())
+		auto& overlays = overlayInterface->m_overlays[isFemale ? 1 : 0];
+		auto hit = overlays.find(actor->formID);
+		if (hit == overlays.end())
 			return false;
 
 		OverlayInterface::PriorityMapPtr priorityMap = hit->second;
 		if (!priorityMap)
 			return false;
 
-		for (auto it = priorityMap->begin(); it != priorityMap->end();) {
+		for (auto it = priorityMap->begin(); it != priorityMap->end(); ++it) {
 			OverlayInterface::OverlayDataPtr overlayPtr = it->second;
-			if (!overlayPtr) {
-				++it;
+			if (!overlayPtr || overlayPtr->uid != uid)
 				continue;
-			}
 
-			if (overlayPtr->uid == uid) {
-				overlayInterface->m_dataMap.erase(overlayPtr->uid);
-				overlayInterface->m_freeIndices.push_back(overlayPtr->uid);
-				it = priorityMap->erase(it);  // erase returns the next valid iterator
-				return true;
-			} else {
-				++it;
-			}
+			overlayInterface->m_dataMap.erase(overlayPtr->uid);
+			overlayInterface->m_freeIndices.push_back(overlayPtr->uid);
+			it = priorityMap->erase(it);
+			return true;
 		}
-
 		return false;
 	}
-	
+
 	//NAFBRIDGE END
 	enum LMVersion
 	{
@@ -248,16 +245,21 @@ namespace LooksMenu
 	{
 		typedef bool(ApplyMorphsToShapes)(BodyMorphInterface*, RE::Actor*, RE::NiAVObject*);
 		typedef void(LoadBodyGenSliderMods)(BodyMorphInterface*);
-		using RemoveOverlayHandler = bool (*)(OverlayInterface*, bool, UniqueID); //NAF Bridge F4EE Remove Overlay fix
+		using RemoveOverlayHandler = bool (*)(OverlayInterface*, bool, UniqueID);  //NAF Bridge F4EE Remove Overlay fix
+		using RemoveAllHandler = bool (*)(OverlayInterface*, RE::Actor*, bool);    // Hook for RemoveAll (vtable index 10)
 
+		DetourXS applyRemoveAllHook;  // Hook for RemoveAll
 		DetourXS applyMorphsHook;
-		DetourXS applyRemoveOverlayHook; //NAF Bridge F4EE Remove Overlay fix
+		DetourXS applyRemoveOverlayHook;  //NAF Bridge F4EE Remove Overlay fix
 		ApplyMorphsToShapes* originalApply;
 
 		BodyMorphInterface* g_bodyMorphInterface = nullptr;
 		RemoveOverlayHandler originalRemoveOverlay = nullptr;
+		RemoveAllHandler originalRemoveAll = nullptr;  // RemoveAll hook
 
-		uint64_t GetVersionOffset(uint64_t off1_6_18, uint64_t off1_6_20) {
+
+		uint64_t GetVersionOffset(uint64_t off1_6_18, uint64_t off1_6_20)
+		{
 			switch (version) {
 			case k1_6_18:
 				return off1_6_18;
@@ -268,14 +270,33 @@ namespace LooksMenu
 			}
 		}
 
-		bool HookedApplyMorphs(BodyMorphInterface* a1, RE::Actor* a2, RE::NiAVObject* a3) {
+		bool HookedRemoveAll(OverlayInterface* overlayInterface, RE::Actor* actor, bool isFemale)
+		{
+			if (originalRemoveAll) {
+				logger::info("HookedRemoveAll called for actor: {}, isFemale: {}", actor ? std::to_string(actor->formID) : "null", isFemale);
+				return originalRemoveAll(overlayInterface, actor, isFemale);
+			}
+			// If trampoline isn't available, fall back to false to avoid undefined behavior.
+			return false;
+		}
+
+		bool HookedApplyMorphs(BodyMorphInterface* a1, RE::Actor* a2, RE::NiAVObject* a3)
+		{
 			std::this_thread::sleep_for(std::chrono::microseconds(1));
 			return originalApply(a1, a2, a3);
 		}
 
-		void RegisterHook() {
-			uintptr_t baseAddr = reinterpret_cast<uintptr_t>(GetModuleHandleA("f4ee.dll"));
+		void RegisterHook()
+		{
+			HMODULE module = GetModuleHandleA("f4ee.dll");
+			if (!module) {
+				logger::warn("GetModuleHandleA(\"f4ee.dll\") failed");
+				return;
+			}
 
+			uintptr_t baseAddr = reinterpret_cast<uintptr_t>(module);
+
+			// ApplyMorphs hook (unchanged)
 			if (!applyMorphsHook.Create(reinterpret_cast<LPVOID>(baseAddr + GetVersionOffset(0x10040, 0xFFCC)), &HookedApplyMorphs)) {
 				logger::warn("Failed to create ApplyMorphsToShapes hook!");
 			} else {
@@ -283,19 +304,71 @@ namespace LooksMenu
 				originalApply = reinterpret_cast<ApplyMorphsToShapes*>(applyMorphsHook.GetTrampoline());
 			}
 
+			// Body morph interface pointer (unchanged)
 			g_bodyMorphInterface = reinterpret_cast<BodyMorphInterface*>(baseAddr + GetVersionOffset(0xFB440, 0xF4DF0));
 
-			//NAF Bridge F4EE Remove Overlay fix
-			if (!applyRemoveOverlayHook.Create(reinterpret_cast<LPVOID>(baseAddr + 0x420D0), &HookedRemoveOverlay)) {
+			// --- NAF Bridge F4EE Remove Overlay fix ---
+			// Replace the hardcoded offset below with GetVersionOffset(...) if you know the alternate offset for other versions.
+			
+			constexpr uintptr_t removeOverlayInstanceOffset = 0xF5040;  // replace with GetVersionOffset(a, b) if appropriate
+			constexpr size_t removeOverlayVTableIndex = 9;
+
+			uintptr_t instanceAddr = baseAddr + removeOverlayInstanceOffset;
+			if (instanceAddr == 0) {
+				logger::warn("instance address is null, cannot create applyRemoveOverlayHook hook!");
+				return;
+			}
+
+			// Read vtable pointer (first field of the object)
+			uintptr_t* vtable = nullptr;
+			// Defensive check: ensure the instance pointer is sane
+			if (instanceAddr < 0x10000) {  // simple sanity check — adapt as needed
+				logger::warn("instanceAddr appears invalid, aborting remove overlay hook creation");
+				return;
+			}
+
+			// NOTE: dereferencing arbitrary addresses can crash if wrong; make sure instanceAddr is correct for this process.
+			vtable = *reinterpret_cast<uintptr_t**>(instanceAddr);
+			if (vtable == nullptr) {
+				logger::warn("vtable is null, cannot create hook!");
+				return;
+			}
+
+			uintptr_t funcAddr = vtable[removeOverlayVTableIndex];
+			if (funcAddr == 0) {
+				logger::warn("vtable[9] is null, cannot create hook!");
+				return;
+			}
+
+			LPVOID target = reinterpret_cast<LPVOID>(funcAddr);
+
+			if (!applyRemoveOverlayHook.Create(target, &HookedRemoveOverlay)) {
 				logger::warn("Failed to create applyRemoveOverlayHook hook!");
 			} else {
 				logger::info("Create applyRemoveOverlayHook hook success!");
 				originalRemoveOverlay = reinterpret_cast<RemoveOverlayHandler>(applyRemoveOverlayHook.GetTrampoline());
 			}
+
+			// REMOVE ALL HOOK
+			/*size_t removeAllVTableIndex = 10;
+			uintptr_t funcAddrRemoveAll = vtable[removeAllVTableIndex];
+			if (funcAddrRemoveAll == 0) {
+				logger::warn("vtable[10] is null, cannot create RemoveAll hook!");
+			} else {
+				LPVOID targetAll = reinterpret_cast<LPVOID>(funcAddrRemoveAll);
+
+				if (!applyRemoveAllHook.Create(targetAll, &HookedRemoveAll)) {
+					logger::warn("Failed to create applyRemoveAllHook hook!");
+				} else {
+					logger::info("Create applyRemoveAllHook hook success!");
+					originalRemoveAll = reinterpret_cast<RemoveAllHandler>(applyRemoveAllHook.GetTrampoline());
+				}
+			}*/
 		}
 	}
 
-	void Init() {
+	void Init()
+	{
 		if (F4SE::GetPluginInfo("F4EE").has_value()) {
 			// Unfortunately expired has never changed F4EE's plugin version, so we gotta do this the old fashioned way.
 			if (auto sum = checksum("Data/F4SE/Plugins/f4ee.dll"); sum > 0) {
@@ -345,10 +418,19 @@ namespace LooksMenu
 		}
 	}
 
-	void RemoveMorphsByName(RE::Actor* actor, const RE::BSFixedString& morph) {
+	void RemoveMorphsByName(RE::Actor* actor, const RE::BSFixedString& morph)
+	{
 		if (isInstalled && actor && detail::g_bodyMorphInterface) {
-			bool isFemale = (actor->GetSex() == 1);
+			bool isFemale = (actor->GetSex() == RE::Actor::Sex::Female);
 			detail::g_bodyMorphInterface->RemoveMorphsByName(actor, isFemale, morph);
+		}
+	}
+
+	void RemoveMorphsByKeyword(RE::Actor* actor, RE::BGSKeyword* keyword)
+	{
+		if (isInstalled && actor && detail::g_bodyMorphInterface) {
+			bool isFemale = (actor->GetSex() == RE::Actor::Sex::Female);
+			detail::g_bodyMorphInterface->RemoveMorphsByKeyword(actor, isFemale, keyword);
 		}
 	}
 }

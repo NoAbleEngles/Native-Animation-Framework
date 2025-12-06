@@ -332,6 +332,8 @@ namespace Scene
 			angle.y = 0;
 			SetAnimMult(100);
 
+			std::vector<RE::NiPointer<RE::Actor>> actorList;
+
 			size_t actor_count = 0; //NAFBridge offset
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap& props) {
 				currentActor->StopInteractingQuick();
@@ -379,6 +381,8 @@ namespace Scene
 						MathUtil::ApplyOffsetToLocalSpace(actorLoc, os.value(), os.valueA());
 					}
 				}
+
+				actorList.push_back(RE::NiPointer<RE::Actor>(currentActor));
 				++actor_count;
 				//NAFBridge end
 
@@ -391,6 +395,10 @@ namespace Scene
 				//logger::info{ "pos : {}, {}, {}\t actor : {} Begin end",
 				//	currentActor->data.location.x, currentActor->data.location.y, currentActor->data.location.z, currentActor->GetDisplayFullName() };
 			});
+
+			if (actorList.size() > 0) {
+				fannyAnim.StartTracking(actorList);
+			}
 
 			status = SceneState::Active;
 			Data::Events::Send(Data::Events::SCENE_START, uid);
@@ -868,6 +876,8 @@ namespace Scene
 					lastAnimTime = animTime;
 				}
 			}
+
+			fannyAnim.Update(0.01f);  //0.16f ~ 60 FPS
 
 			size_t actor_count = 0; //NAFBridge offset
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap& props) {

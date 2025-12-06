@@ -6,6 +6,7 @@
 #include "Scene/DynamicIdle.h"
 #include "Scene/IControlSystem.h"
 #include "Misc/Strings.h"
+#include "Bridge/NewData/FannyAnimation.h"
 
 #define SCENE_FUNCTOR()                             \
 	using SceneFunctor::SceneFunctor;               \
@@ -233,6 +234,7 @@ namespace Scene
 		std::string stopEquipSet;
 		SceneSettings settings;
 		std::shared_ptr<const Data::Position> currentPosition = settings.startPosition;  //NAFBridge offsets
+		Data::FannyAnimation fannyAnim;													 //NAF Bridge Fanny Animation
 		IScene() {}
 
 		virtual bool PushQueuedControlSystem() { return false; }

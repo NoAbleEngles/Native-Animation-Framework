@@ -352,8 +352,10 @@ namespace Scene
 			CheckParentPointer();
 
 			if (scn->HasPlayer()) {
-				hudActive = true;
 				autoAdvance = scn->QAutoAdvance();
+				if (autoAdvance == false) {
+					hudActive = true;
+				}
 			} else {
 				autoAdvance = true;
 			}
@@ -370,7 +372,9 @@ namespace Scene
 				RegisterListener(Data::Events::HUD_LEFT_KEY_DOWN, &PositionTreeControlSystem::OnHudKey);
 				RegisterListener(Data::Events::HUD_RIGHT_KEY_DOWN, &PositionTreeControlSystem::OnHudKey);
 				UpdateHUDState();
-			}	
+			}
+
+			autoAdvance = scn->QAutoAdvance();
 		}
 
 		virtual void OnAnimationLoop(IControllable*) override
