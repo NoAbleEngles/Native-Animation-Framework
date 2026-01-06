@@ -1,135 +1,582 @@
 #pragma once
-#include "LooksMenu/LooksMenu.h"
-#include "Bridge/IniParser/Ini.h"
 #include "Bridge/Consts.h"
+#include "Bridge/IniParser/Ini.h"
+#include "LooksMenu/LooksMenu.h"
+#include <boost/json.hpp>
+#include <fstream>
 
 namespace Data
 {
-	/* Класс FannyAnimation для анимации для вагины и ануса. Во время входа пениса в вагину/анус - выполнять анимацию расширения вагины/ануса,
-	* Во время выхода - анимацию сужения. То же самое нужно делать для рук.
-	* Нужно получать список актёров и команду на начало/окончание проникновения, после этого отслеживать положение пениса и рук относительно вагины/ануса, и при достаточной близости запускать анимации сужения/расширения.
-	* Для этого нужно знать:
-		* Мы знаем что узел кончика пениса называется "Penis_05", 
-		* Глубокая точка вагины это "Pelvis_skin"
-		* Глубокая точка ануса это "Pelvis_Rear_skin"
-		* Узел руки "LArm_Hand" и "RArm_Hand"
-		* Морф вагины BodyMorphInterface - "VaginaPenetrate":
-		* Полностью раскрытая вагина: 1.0
-		* Закрытая вагина: 0
-		* Морфы ануса "ButtcheeksSpread", "AnusPenetrate", "AnusBack" 
-		* Полностью раскрытый "ButtcheeksSpread": 0.5
-		* Полностью раскрытый "AnusPenetrate": 1.0
-		* Полностью раскрытый "AnusBack": 1.0
-		* Закрытый "ButtcheeksSpread": 0.0
-		* Закрытый "AnusPenetrate": 0.0
-		* Закрытый "AnusBack": 0.0
-		* 
-		* Для работы с морфами использовать LooksMenu
-		* 
-	* Что бы сократить лишнюю нагрузку нужно не производить лишние рассчёты можно показывать анимацию лишь когда камера находится не далее чем 200 ед. расстояния от точки вагины в пространстве. Камера не может моментально поменять положение (точнее это редкость) по этому допустимо пересчитывать расстояние раз в 1 секунду.
-	*/
+	/* Структуры данных для конфигурации FannyAnimation.
+	 * Позволяют задавать параметры анимации для разных рас и полов через JSON файлы.
+	 */
 
+	// ============================================================================
+	// CONFIGURATION STRUCTURES
+	// ============================================================================
+
+	// Информация о морфе: имя и максимальное значение
+	struct MorphInfo
+	{
+		std::string name;       // Имя морфа (например "VaginaPenetrate")
+		float maxValue = 1.0f;  // Максимальное значение морфа при полном проникновении
+	};
+
+	// Информация о пенетраторе: имя кости и пороговые расстояния
+	struct TipNodeInfo
+	{
+		std::string nodeName;         // Имя кости (например "Penis_05")
+		float startDistance = 15.0f;  // Расстояние начала эффекта проникновения
+		float fullDistance = 2.0f;    // Расстояние полного проникновения
+	};
+
+	// Конфигурация для конкретной расы/пола
+	struct FannyAnimationActorConfig
+	{
+		// Идентификация
+		bool isFemale = true;                    // true = женский пол, false = мужской
+		std::unordered_set<RE::TESRace*> races;  // Набор рас, к которым применяется конфиг
+
+		// ============================================================================
+		// RECEIVER NODES - точки приёма проникновения (вагина, анус)
+		// ============================================================================
+		std::string vaginaDeepNode;  // Глубокая точка вагины (например "Pelvis_skin")
+		std::string anusDeepNode;    // Глубокая точка ануса (например "Pelvis_Rear_skin")
+
+		// ============================================================================
+		// RECEIVER MORPHS - морфы, применяемые при проникновении
+		// ============================================================================
+		std::vector<MorphInfo> vaginaMorphs;  // Морфы вагины при проникновении
+		std::vector<MorphInfo> anusMorphs;    // Морфы ануса при проникновении
+
+		// ============================================================================
+		// TIP NODES - все кости пенетраторов с параметрами
+		// ============================================================================
+		std::vector<TipNodeInfo> tipNodes;  // Все пенетраторы (пенис, пальцы, язык и т.д.)
+
+		// ============================================================================
+		// UTILITY METHODS
+		// ============================================================================
+
+		// Проверяет, подходит ли конфиг для данного актёра
+		bool IsApplicable(RE::Actor* actor) const
+		{
+			if (!actor)
+				return false;
+
+			// Проверка пола
+			bool actorIsFemale = (actor->GetSex() == RE::Actor::Sex::Female);
+			if (actorIsFemale != isFemale)
+				return false;
+
+			// Проверка расы (если список пуст - это fallback конфиг)
+			if (!races.empty()) {
+				if (!actor->GetVisualsRace() || races.find(actor->GetVisualsRace()) == races.end())
+					return false;
+			}
+
+			return true;
+		}
+
+		// Проверяет наличие узлов-приёмников у актёра
+		bool HasReceiverNodes(RE::Actor* actor) const
+		{
+			if (!actor)
+				return false;
+			auto root = actor->Get3D();
+			if (!root)
+				return false;
+
+			return (!vaginaDeepNode.empty() && root->GetObjectByName(vaginaDeepNode)) ||
+			       (!anusDeepNode.empty() && root->GetObjectByName(anusDeepNode));
+		}
+	};
+
+	// Глобальные настройки системы FannyAnimation
+	struct FannyAnimationGlobalSettings
+	{
+		float cameraMaxDistance = 200.0f;   // Максимальное расстояние камеры для обновления
+		float cameraCheckInterval = 1.0f;   // Интервал проверки расстояния камеры (секунды)
+		float morphTransitionSpeed = 5.0f;  // Скорость перехода морфов
+
+		// Применяет fallback значения по умолчанию
+		static FannyAnimationGlobalSettings GetDefault()
+		{
+			return { 200.0f, 1.0f, 5.0f };
+		}
+	};
+
+	// Контейнер всех конфигураций
+	struct FannyAnimationConfig
+	{
+		FannyAnimationGlobalSettings globalSettings;
+		std::vector<FannyAnimationActorConfig> actorConfigs;     // Конфиги с привязкой к расам
+		std::vector<FannyAnimationActorConfig> fallbackConfigs;  // Fallback конфиги (без рас)
+		bool isLoaded = false;                                   // Флаг загрузки конфига
+
+		// Находит подходящий конфиг для актёра
+		const FannyAnimationActorConfig* FindConfigForActor(RE::Actor* actor) const
+		{
+			if (!actor)
+				return nullptr;
+
+			// Сначала ищем в основных конфигах (с расами)
+			for (const auto& config : actorConfigs) {
+				if (config.IsApplicable(actor))
+					return &config;
+			}
+
+			// Если не нашли - ищем в fallback конфигах
+			for (const auto& config : fallbackConfigs) {
+				if (config.IsApplicable(actor))
+					return &config;
+			}
+
+			return nullptr;
+		}
+
+		// ============================================================================
+		// JSON PARSING
+		// ============================================================================
+
+		// Парсит расу из строки формата "Plugin.esm:0x123456"
+		static RE::TESRace* ParseRaceFromString(const std::string& raceStr)
+		{
+			auto colonPos = raceStr.find(':');
+			if (colonPos == std::string::npos)
+				return nullptr;
+
+			std::string plugin = raceStr.substr(0, colonPos);
+			std::string formIdStr = raceStr.substr(colonPos + 1);
+
+			// Убираем "0x" если есть
+			if (formIdStr.size() > 2 && formIdStr[0] == '0' && (formIdStr[1] == 'x' || formIdStr[1] == 'X')) {
+				formIdStr = formIdStr.substr(2);
+			}
+
+			uint32_t formId = 0;
+			try {
+				formId = std::stoul(formIdStr, nullptr, 16);
+			} catch (...) {
+				return nullptr;
+			}
+
+			auto dataHandler = RE::TESDataHandler::GetSingleton();
+			if (!dataHandler)
+				return nullptr;
+
+			return dataHandler->LookupForm<RE::TESRace>(formId, plugin);
+		}
+
+		// Парсит массив морфов из JSON
+		static std::vector<MorphInfo> ParseMorphArray(const boost::json::array& arr)
+		{
+			std::vector<MorphInfo> result;
+			for (const auto& item : arr) {
+				if (!item.is_object())
+					continue;
+				const auto& obj = item.as_object();
+
+				MorphInfo morph;
+				if (auto it = obj.find("name"); it != obj.end() && it->value().is_string()) {
+					morph.name = it->value().as_string().c_str();
+				}
+				if (auto it = obj.find("maxValue"); it != obj.end() && it->value().is_number()) {
+					morph.maxValue = static_cast<float>(it->value().as_double());
+				}
+
+				if (!morph.name.empty()) {
+					result.push_back(morph);
+				}
+			}
+			return result;
+		}
+
+		// Парсит массив tip nodes из JSON
+		static std::vector<TipNodeInfo> ParseTipNodeArray(const boost::json::array& arr)
+		{
+			std::vector<TipNodeInfo> result;
+			for (const auto& item : arr) {
+				if (!item.is_object())
+					continue;
+				const auto& obj = item.as_object();
+
+				TipNodeInfo node;
+				if (auto it = obj.find("nodeName"); it != obj.end() && it->value().is_string()) {
+					node.nodeName = it->value().as_string().c_str();
+				}
+				if (auto it = obj.find("startDistance"); it != obj.end() && it->value().is_number()) {
+					node.startDistance = static_cast<float>(it->value().as_double());
+				}
+				if (auto it = obj.find("fullDistance"); it != obj.end() && it->value().is_number()) {
+					node.fullDistance = static_cast<float>(it->value().as_double());
+				}
+
+				if (!node.nodeName.empty()) {
+					result.push_back(node);
+				}
+			}
+			return result;
+		}
+
+		// Парсит один актор-конфиг из JSON объекта
+		static FannyAnimationActorConfig ParseActorConfig(const boost::json::object& obj, bool parseRaces = true)
+		{
+			FannyAnimationActorConfig config;
+
+			// isFemale
+			if (auto it = obj.find("isFemale"); it != obj.end() && it->value().is_bool()) {
+				config.isFemale = it->value().as_bool();
+			}
+
+			// races (только если parseRaces = true)
+			if (parseRaces) {
+				if (auto it = obj.find("races"); it != obj.end() && it->value().is_array()) {
+					for (const auto& raceItem : it->value().as_array()) {
+						if (raceItem.is_string()) {
+							if (auto race = ParseRaceFromString(raceItem.as_string().c_str())) {
+								config.races.insert(race);
+							}
+						}
+					}
+				}
+			}
+
+			// vaginaDeepNode
+			if (auto it = obj.find("vaginaDeepNode"); it != obj.end() && it->value().is_string()) {
+				config.vaginaDeepNode = it->value().as_string().c_str();
+			}
+
+			// anusDeepNode
+			if (auto it = obj.find("anusDeepNode"); it != obj.end() && it->value().is_string()) {
+				config.anusDeepNode = it->value().as_string().c_str();
+			}
+
+			// vaginaMorphs
+			if (auto it = obj.find("vaginaMorphs"); it != obj.end() && it->value().is_array()) {
+				config.vaginaMorphs = ParseMorphArray(it->value().as_array());
+			}
+
+			// anusMorphs
+			if (auto it = obj.find("anusMorphs"); it != obj.end() && it->value().is_array()) {
+				config.anusMorphs = ParseMorphArray(it->value().as_array());
+			}
+
+			// tipNodes
+			if (auto it = obj.find("tipNodes"); it != obj.end() && it->value().is_array()) {
+				config.tipNodes = ParseTipNodeArray(it->value().as_array());
+			}
+
+			return config;
+		}
+
+		// Парсит глобальные настройки из JSON
+		static FannyAnimationGlobalSettings ParseGlobalSettings(const boost::json::object& obj)
+		{
+			FannyAnimationGlobalSettings settings = FannyAnimationGlobalSettings::GetDefault();
+
+			if (auto it = obj.find("cameraMaxDistance"); it != obj.end() && it->value().is_number()) {
+				settings.cameraMaxDistance = static_cast<float>(it->value().as_double());
+			}
+			if (auto it = obj.find("cameraCheckInterval"); it != obj.end() && it->value().is_number()) {
+				settings.cameraCheckInterval = static_cast<float>(it->value().as_double());
+			}
+			if (auto it = obj.find("morphTransitionSpeed"); it != obj.end() && it->value().is_number()) {
+				settings.morphTransitionSpeed = static_cast<float>(it->value().as_double());
+			}
+
+			return settings;
+		}
+
+		// Загружает основной конфиг из JSON файла
+		bool LoadFromFile(const std::string& filePath)
+		{
+			try {
+				std::ifstream file(filePath);
+				if (!file.is_open()) {
+					logger::warn("FannyAnimation: Cannot open config file: {}", filePath);
+					return false;
+				}
+
+				std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+				file.close();
+
+				auto json = boost::json::parse(content);
+				if (!json.is_object()) {
+					logger::warn("FannyAnimation: Invalid JSON format in: {}", filePath);
+					return false;
+				}
+
+				const auto& root = json.as_object();
+
+				// Парсим globalSettings
+				if (auto it = root.find("globalSettings"); it != root.end() && it->value().is_object()) {
+					globalSettings = ParseGlobalSettings(it->value().as_object());
+				} else {
+					globalSettings = FannyAnimationGlobalSettings::GetDefault();
+				}
+
+				// Парсим actorConfigs
+				actorConfigs.clear();
+				if (auto it = root.find("actorConfigs"); it != root.end() && it->value().is_array()) {
+					for (const auto& configItem : it->value().as_array()) {
+						if (configItem.is_object()) {
+							auto config = ParseActorConfig(configItem.as_object(), true);
+							actorConfigs.push_back(config);
+						}
+					}
+				}
+
+				logger::info("FannyAnimation: Loaded {} actor configs from: {}", actorConfigs.size(), filePath);
+				return true;
+
+			} catch (const std::exception& e) {
+				logger::error("FannyAnimation: Error parsing config file {}: {}", filePath, e.what());
+				return false;
+			}
+		}
+
+		// Загружает fallback конфиг из JSON файла
+		bool LoadFallbackFromFile(const std::string& filePath)
+		{
+			try {
+				std::ifstream file(filePath);
+				if (!file.is_open()) {
+					logger::warn("FannyAnimation: Cannot open fallback config file: {}", filePath);
+					return false;
+				}
+
+				std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+				file.close();
+
+				auto json = boost::json::parse(content);
+				if (!json.is_object()) {
+					logger::warn("FannyAnimation: Invalid JSON format in fallback: {}", filePath);
+					return false;
+				}
+
+				const auto& root = json.as_object();
+
+				// Парсим actorConfigs как fallback (без рас)
+				fallbackConfigs.clear();
+				if (auto it = root.find("actorConfigs"); it != root.end() && it->value().is_array()) {
+					for (const auto& configItem : it->value().as_array()) {
+						if (configItem.is_object()) {
+							auto config = ParseActorConfig(configItem.as_object(), false);  // false = не парсить расы
+							fallbackConfigs.push_back(config);
+						}
+					}
+				}
+
+				logger::info("FannyAnimation: Loaded {} fallback configs from: {}", fallbackConfigs.size(), filePath);
+				return true;
+
+			} catch (const std::exception& e) {
+				logger::error("FannyAnimation: Error parsing fallback config file {}: {}", filePath, e.what());
+				return false;
+			}
+		}
+
+		// Создаёт конфигурацию по умолчанию (hardcoded fallback)
+		static FannyAnimationConfig CreateDefault()
+		{
+			FannyAnimationConfig data;
+
+			// Глобальные настройки
+			data.globalSettings = FannyAnimationGlobalSettings::GetDefault();
+
+			// Fallback конфиг для женщин
+			FannyAnimationActorConfig femaleConfig;
+			femaleConfig.isFemale = true;
+			femaleConfig.vaginaDeepNode = "Pelvis_skin";
+			femaleConfig.anusDeepNode = "Pelvis_Rear_skin";
+			femaleConfig.vaginaMorphs.push_back({ "VaginaPenetrate", 1.5f });
+			femaleConfig.anusMorphs.push_back({ "ButtcheeksSpread", 0.5f });
+			femaleConfig.anusMorphs.push_back({ "AnusPenetrate", 1.5f });
+			femaleConfig.anusMorphs.push_back({ "AnusBack", 1.5f });
+			femaleConfig.tipNodes.push_back({ "LArm_Finger33", 15.0f, 5.0f });
+			femaleConfig.tipNodes.push_back({ "RArm_Finger33", 15.0f, 5.0f });
+			femaleConfig.tipNodes.push_back({ "Tongue04", 10.0f, 3.0f });
+			data.fallbackConfigs.push_back(femaleConfig);
+
+			// Fallback конфиг для мужчин
+			FannyAnimationActorConfig maleConfig;
+			maleConfig.isFemale = false;
+			maleConfig.anusDeepNode = "Pelvis_Rear_skin";
+			maleConfig.anusMorphs.push_back({ "ButtcheeksSpread", 0.5f });
+			maleConfig.anusMorphs.push_back({ "AnusPenetrate", 1.5f });
+			maleConfig.anusMorphs.push_back({ "AnusBack", 1.5f });
+			maleConfig.tipNodes.push_back({ "Penis_05", 15.0f, 2.0f });
+			maleConfig.tipNodes.push_back({ "LArm_Finger33", 15.0f, 5.0f });
+			maleConfig.tipNodes.push_back({ "RArm_Finger33", 15.0f, 5.0f });
+			maleConfig.tipNodes.push_back({ "Tongue04", 10.0f, 3.0f });
+			data.fallbackConfigs.push_back(maleConfig);
+
+			data.isLoaded = true;
+			return data;
+		}
+	};
+
+	// ============================================================================
+	// STATIC CONFIG MANAGER
+	// ============================================================================
+
+	class FannyAnimationConfigManager
+	{
+	public:
+		// Получить синглтон конфига
+		static FannyAnimationConfig& GetConfig()
+		{
+			static FannyAnimationConfig config;
+			return config;
+		}
+
+		// Загрузить конфигурацию (вызывать один раз при загрузке игры в main.cpp)
+		static bool LoadConfig(const std::string& mainConfigPath, const std::string& fallbackConfigPath)
+		{
+			auto& config = GetConfig();
+
+			// Сначала создаём дефолтные значения
+			config = FannyAnimationConfig::CreateDefault();
+
+			// Пытаемся загрузить основной конфиг
+			bool mainLoaded = config.LoadFromFile(mainConfigPath);
+			if (mainLoaded) {
+				logger::info("FannyAnimation: Main configuration loaded successfully.");
+			} else {
+				logger::warn("FannyAnimation: Main configuration not loaded, using defaults/fallbacks.");
+			}
+
+			// Пытаемся загрузить fallback конфиг
+			bool fallbackLoaded = config.LoadFallbackFromFile(fallbackConfigPath);
+			if (fallbackLoaded) {
+				logger::info("FannyAnimation: Fallback configuration loaded successfully.");
+			} else {
+				logger::warn("FannyAnimation: Fallback configuration not loaded, using hardcoded defaults.");
+			}
+
+			// Если ничего не загрузилось - используем hardcoded defaults
+			if (!mainLoaded && !fallbackLoaded) {
+				logger::warn("FannyAnimation: Using hardcoded default configuration");
+			}
+
+			config.isLoaded = true;
+			return mainLoaded || fallbackLoaded;
+		}
+
+		// Перезагрузить конфигурацию (для вызова из консоли/MCM)
+		static bool ReloadConfig(const std::string& mainConfigPath, const std::string& fallbackConfigPath)
+		{
+			logger::info("FannyAnimation: Reloading configuration...");
+			return LoadConfig(mainConfigPath, fallbackConfigPath);
+		}
+
+		// Проверить, загружен ли конфиг
+		static bool IsConfigLoaded()
+		{
+			return GetConfig().isLoaded;
+		}
+	};
+
+	// ============================================================================
+	// MAIN CLASS
+	// ============================================================================
+
+	enum class TargetType
+	{
+		None,
+		Vagina,
+		Anus
+	};
+
+	/* Класс FannyAnimation для анимации вагины и ануса при проникновении.
+	 * Отслеживает положение пенетраторов (пенис, пальцы, язык) относительно
+	 * точек приёма (вагина, анус) и применяет соответствующие морфы.
+	 * Использует статический конфиг из FannyAnimationConfigManager.
+	 */
 	class FannyAnimation
 	{
 	public:
-		// Node names
-		static constexpr const char* NODE_PENIS_TIP = "Penis_05";
-		static constexpr const char* NODE_VAGINA_DEEP = "Pelvis_skin";
-		static constexpr const char* NODE_ANUS_DEEP = "Pelvis_Rear_skin";
-		static constexpr const char* NODE_LEFT_FINGER = "LArm_Finger33";
-		static constexpr const char* NODE_RIGHT_FINGER = "RArm_Finger33";
+		// ============================================================================
+		// INTERNAL STRUCTURES
+		// ============================================================================
 
-		// Morph names
-		static constexpr const char* MORPH_VAGINA_PENETRATE = "VaginaPenetrate";
-		static constexpr const char* MORPH_BUTTCHEEKS_SPREAD = "ButtcheeksSpread";
-		static constexpr const char* MORPH_ANUS_PENETRATE = "AnusPenetrate";
-		static constexpr const char* MORPH_ANUS_BACK = "AnusBack";
-
-		// Morph max values
-		static constexpr float MORPH_VAGINA_MAX = 1.0f;
-		static constexpr float MORPH_BUTTCHEEKS_SPREAD_MAX = 0.5f;
-		static constexpr float MORPH_ANUS_PENETRATE_MAX = 1.0f;
-		static constexpr float MORPH_ANUS_BACK_MAX = 1.0f;
-
-		// Distance thresholds for PENIS (in game units)
-		static constexpr float PENIS_PENETRATION_START_DISTANCE = 15.0f;
-		static constexpr float PENIS_PENETRATION_FULL_DISTANCE = 2.0f;
-
-		// Distance thresholds for FINGER (smaller, ~1/4 of penis)
-		static constexpr float FINGER_PENETRATION_START_DISTANCE = 45.0f;
-		static constexpr float FINGER_PENETRATION_FULL_DISTANCE = 15.f;
-
-		// Camera distance optimization
-		static constexpr float CAMERA_MAX_DISTANCE = 200.0f;
-		static constexpr float CAMERA_CHECK_INTERVAL = 1.0f;
-
-		static RE::BGSKeyword* GetMorphKWD()
-		{
-			static auto kwd = RE::TESDataHandler::GetSingleton()->LookupForm<RE::BGSKeyword>(0x800, "AAF.esm");
-			return kwd;
-		};
-
-		enum class PenetratorType
-		{
-			None,
-			Penis,
-			LeftFinger,
-			RightFinger
-		};
-
-		enum class TargetType
-		{
-			None,
-			Vagina,
-			Anus
-		};
-
-		// Tracks which penetrator is assigned to which target for a receiver
+		// Назначение пенетратора к цели
 		struct PenetratorAssignment
 		{
 			RE::ActorHandle penetratorActor;
-			PenetratorType penetratorType = PenetratorType::None;
+			std::string nodeName;
 			TargetType targetType = TargetType::None;
-			float currentFactor = 0.0f;  // Current penetration factor (0-1)
+			float currentFactor = 0.0f;  // Текущий фактор проникновения (0-1)
 		};
 
+		// Состояние получателя (актёр с вагиной/анусом)
 		struct ReceiverState
 		{
 			RE::ActorHandle receiverHandle;
-			std::vector<PenetratorAssignment> assignments;  // Active penetrator assignments
-			float currentVaginaMorph = 0.0f;
-			float currentButtcheeksMorph = 0.0f;
-			float currentAnusPenetrateMorph = 0.0f;
-			float currentAnusBackMorph = 0.0f;
+			const FannyAnimationActorConfig* config = nullptr;          // Ссылка на конфиг для этого актёра
+			std::vector<PenetratorAssignment> assignments;              // Активные назначения пенетраторов
+			std::unordered_map<std::string, float> currentMorphValues;  // Текущие значения морфов
 			bool isActive = false;
 			bool isCameraClose = true;
 			float cameraCheckTimer = 0.0f;
 		};
 
+		// Информация о пенетраторе для расчётов
+		struct PenetratorInfo
+		{
+			RE::ActorHandle actorHandle;
+			std::string nodeName;
+			RE::NiPoint3 position;
+			float startDistance;
+			float fullDistance;
+			bool isValid;
+		};
+
 	private:
 		std::vector<ReceiverState> receiverStates;
-		std::vector<RE::ActorHandle> allActors;  // All actors in scene
+		std::vector<RE::ActorHandle> allActors;
 		bool isEnabled = false;
-		float morphTransitionSpeed = 5.0f;
+
+		// Получить конфиг (удобный метод)
+		static const FannyAnimationConfig& GetConfig()
+		{
+			return FannyAnimationConfigManager::GetConfig();
+		}
 
 	public:
 		FannyAnimation() = default;
+
 		~FannyAnimation()
 		{
 			StopTracking();
-		};
+		}
+
+		// ============================================================================
+		// STATIC CONFIGURATION ACCESS
+		// ============================================================================
+
+		static RE::BGSKeyword* GetMorphKWD()
+		{
+			static auto kwd = RE::TESDataHandler::GetSingleton()->LookupForm<RE::BGSKeyword>(0x800, "AAF.esm");
+			return kwd;
+		}
+
+		// ============================================================================
+		// TRACKING CONTROL
+		// ============================================================================
 
 		void StartTracking(const std::vector<RE::NiPointer<RE::Actor>>& actors)
 		{
-			if (!LooksMenu::isInstalled) {
+			if (!LooksMenu::isInstalled)
 				return;
-			}
 
 			if (!GetMorphKWD()) {
 				logger::error("FannyAnimation: Morph keyword not found, cannot start tracking.");
 				return;
 			}
 
+			// Проверка настроек из MCM INI
 			bool enable = true;
 			std::string file;
 			if (std::filesystem::exists(MCM_INI_PATH)) {
@@ -143,29 +590,38 @@ namespace Data
 				enable = map.at("Settings/bAnimateFannies", false);
 			}
 
-			if (!enable) {
+			if (!enable)
+				return;
+
+			// Проверяем, загружен ли конфиг
+			if (!FannyAnimationConfigManager::IsConfigLoaded()) {
+				logger::warn("FannyAnimation: Config not loaded, cannot start tracking.");
 				return;
 			}
+
+			const auto& config = GetConfig();
 
 			receiverStates.clear();
 			allActors.clear();
 			isEnabled = true;
 
-			// Store all actor handles
+			// Сохраняем всех актёров
 			for (const auto& actor : actors) {
 				if (actor) {
 					allActors.push_back(actor->GetActorHandle());
 				}
 			}
 
-			// Create receiver states for actors that have receiving nodes
+			// Создаём состояния для актёров-получателей
 			for (const auto& actor : actors) {
 				if (!actor)
 					continue;
 
-				if (HasReceivingNodes(actor.get())) {
+				const auto* actorConfig = config.FindConfigForActor(actor.get());
+				if (actorConfig && actorConfig->HasReceiverNodes(actor.get())) {
 					ReceiverState state;
 					state.receiverHandle = actor->GetActorHandle();
+					state.config = actorConfig;
 					state.isActive = true;
 					state.isCameraClose = true;
 					state.cameraCheckTimer = 0.0f;
@@ -176,9 +632,8 @@ namespace Data
 
 		void StopTracking()
 		{
-			if (!LooksMenu::isInstalled) {
+			if (!LooksMenu::isInstalled)
 				return;
-			}
 
 			for (auto& state : receiverStates) {
 				if (auto receiver = state.receiverHandle.get(); receiver != nullptr) {
@@ -193,9 +648,10 @@ namespace Data
 
 		void Update(float deltaTime)
 		{
-			if (!isEnabled || !LooksMenu::isInstalled) {
+			if (!isEnabled || !LooksMenu::isInstalled)
 				return;
-			}
+
+			const auto& config = GetConfig();
 
 			for (auto& state : receiverStates) {
 				if (!state.isActive)
@@ -207,11 +663,11 @@ namespace Data
 					continue;
 				}
 
-				// Update camera distance check timer
+				// Проверка расстояния камеры
 				state.cameraCheckTimer -= deltaTime;
 				if (state.cameraCheckTimer <= 0.0f) {
-					state.cameraCheckTimer = CAMERA_CHECK_INTERVAL;
-					state.isCameraClose = IsCameraCloseToReceiver(receiver.get());
+					state.cameraCheckTimer = config.globalSettings.cameraCheckInterval;
+					state.isCameraClose = IsCameraCloseToReceiver(receiver.get(), state.config);
 				}
 
 				if (state.isCameraClose) {
@@ -220,11 +676,17 @@ namespace Data
 			}
 		}
 
-		void SetMorphTransitionSpeed(float speed) { morphTransitionSpeed = speed; }
-		float GetMorphTransitionSpeed() const { return morphTransitionSpeed; }
+		// ============================================================================
+		// ACCESSORS
+		// ============================================================================
+
 		bool IsEnabled() const { return isEnabled; }
 
 	private:
+		// ============================================================================
+		// UTILITY METHODS
+		// ============================================================================
+
 		static RE::NiPoint3 GetCameraPosition()
 		{
 			auto playerCamera = RE::PlayerCamera::GetSingleton();
@@ -234,20 +696,22 @@ namespace Data
 			return RE::NiPoint3();
 		}
 
-		static bool IsCameraCloseToReceiver(RE::Actor* receiver)
+		static bool IsCameraCloseToReceiver(RE::Actor* receiver, const FannyAnimationActorConfig* actorConfig)
 		{
-			if (!receiver)
+			if (!receiver || !actorConfig)
 				return false;
 
+			const auto& config = GetConfig();
+
 			RE::NiPoint3 cameraPos = GetCameraPosition();
-			RE::NiPoint3 receiverPos = GetNodeWorldPosition(receiver, NODE_VAGINA_DEEP);
+			RE::NiPoint3 receiverPos = GetNodeWorldPosition(receiver, actorConfig->vaginaDeepNode.c_str());
 
 			if (IsZeroPosition(receiverPos)) {
-				receiverPos = GetNodeWorldPosition(receiver, NODE_ANUS_DEEP);
+				receiverPos = GetNodeWorldPosition(receiver, actorConfig->anusDeepNode.c_str());
 			}
 
 			float distance = CalculateDistance(cameraPos, receiverPos);
-			return distance <= CAMERA_MAX_DISTANCE;
+			return distance <= config.globalSettings.cameraMaxDistance;
 		}
 
 		static bool IsZeroPosition(const RE::NiPoint3& pos)
@@ -255,21 +719,9 @@ namespace Data
 			return pos.x == 0.0f && pos.y == 0.0f && pos.z == 0.0f;
 		}
 
-		static bool HasReceivingNodes(RE::Actor* actor)
-		{
-			if (!actor)
-				return false;
-			auto root = actor->Get3D();
-			if (!root)
-				return false;
-
-			return root->GetObjectByName(NODE_VAGINA_DEEP) != nullptr ||
-			       root->GetObjectByName(NODE_ANUS_DEEP) != nullptr;
-		}
-
 		static RE::NiPoint3 GetNodeWorldPosition(RE::Actor* actor, const char* nodeName)
 		{
-			if (!actor)
+			if (!actor || !nodeName || nodeName[0] == '\0')
 				return RE::NiPoint3();
 			auto root = actor->Get3D();
 			if (!root)
@@ -290,19 +742,8 @@ namespace Data
 			return std::sqrt(dx * dx + dy * dy + dz * dz);
 		}
 
-		static float CalculatePenetrationFactor(float distance, PenetratorType type)
+		static float CalculatePenetrationFactor(float distance, float startDist, float fullDist)
 		{
-			float startDist, fullDist;
-
-			if (type == PenetratorType::Penis) {
-				startDist = PENIS_PENETRATION_START_DISTANCE;
-				fullDist = PENIS_PENETRATION_FULL_DISTANCE;
-			} else {
-				// Fingers are thinner
-				startDist = FINGER_PENETRATION_START_DISTANCE;
-				fullDist = FINGER_PENETRATION_FULL_DISTANCE;
-			}
-
 			if (distance >= startDist) {
 				return 0.0f;
 			}
@@ -327,18 +768,15 @@ namespace Data
 			return current + (diff > 0 ? maxChange : -maxChange);
 		}
 
-		struct PenetratorInfo
-		{
-			RE::ActorHandle actorHandle;
-			PenetratorType type;
-			RE::NiPoint3 position;
-			bool isValid;
-		};
+		// ============================================================================
+		// PENETRATOR GATHERING
+		// ============================================================================
 
 		std::vector<PenetratorInfo> GatherPenetrators(RE::Actor* receiver)
 		{
 			std::vector<PenetratorInfo> penetrators;
 			RE::ActorHandle receiverHandle = receiver->GetActorHandle();
+			const auto& config = GetConfig();
 
 			for (const auto& actorHandle : allActors) {
 				auto actor = actorHandle.get();
@@ -349,41 +787,32 @@ namespace Data
 				if (!root)
 					continue;
 
+				// Находим конфиг для этого актёра (как пенетратора)
+				const auto* penConfig = config.FindConfigForActor(actor.get());
+				if (!penConfig)
+					continue;
+
 				bool isSelf = (actorHandle == receiverHandle);
 
-				// Penis - only from OTHER actors (no self-penetration with penis)
-				if (!isSelf && root->GetObjectByName(NODE_PENIS_TIP)) {
-					PenetratorInfo info;
-					info.actorHandle = actorHandle;
-					info.type = PenetratorType::Penis;
-					info.position = GetNodeWorldPosition(actor.get(), NODE_PENIS_TIP);
-					info.isValid = !IsZeroPosition(info.position);
-					if (info.isValid) {
-						penetrators.push_back(info);
-					}
-				}
+				// Проходим по всем tip nodes в конфиге
+				for (const auto& nodeInfo : penConfig->tipNodes) {
+					if (root->GetObjectByName(nodeInfo.nodeName)) {
+						PenetratorInfo info;
+						info.actorHandle = actorHandle;
+						info.nodeName = nodeInfo.nodeName;
+						info.position = GetNodeWorldPosition(actor.get(), nodeInfo.nodeName.c_str());
+						info.startDistance = nodeInfo.startDistance;
+						info.fullDistance = nodeInfo.fullDistance;
+						info.isValid = !IsZeroPosition(info.position);
 
-				// Left finger - allowed from ANY actor (including self for masturbation)
-				if (root->GetObjectByName(NODE_LEFT_FINGER)) {
-					PenetratorInfo info;
-					info.actorHandle = actorHandle;
-					info.type = PenetratorType::LeftFinger;
-					info.position = GetNodeWorldPosition(actor.get(), NODE_LEFT_FINGER);
-					info.isValid = !IsZeroPosition(info.position);
-					if (info.isValid) {
-						penetrators.push_back(info);
-					}
-				}
+						// Для самопроникновения пропускаем пенис (Penis в названии)
+						if (isSelf && nodeInfo.nodeName.find("Penis") != std::string::npos) {
+							continue;
+						}
 
-				// Right finger - allowed from ANY actor (including self for masturbation)  
-				if (root->GetObjectByName(NODE_RIGHT_FINGER)) {
-					PenetratorInfo info;
-					info.actorHandle = actorHandle;
-					info.type = PenetratorType::RightFinger;
-					info.position = GetNodeWorldPosition(actor.get(), NODE_RIGHT_FINGER);
-					info.isValid = !IsZeroPosition(info.position);
-					if (info.isValid) {
-						penetrators.push_back(info);
+						if (info.isValid) {
+							penetrators.push_back(info);
+						}
 					}
 				}
 			}
@@ -391,46 +820,47 @@ namespace Data
 			return penetrators;
 		}
 
+		// ============================================================================
+		// STATE UPDATE
+		// ============================================================================
+
 		void UpdateReceiverState(ReceiverState& state, float deltaTime)
 		{
 			auto receiver = state.receiverHandle.get();
-			if (!receiver)
+			if (!receiver || !state.config)
 				return;
 
 			auto receiverRoot = receiver->Get3D();
 			if (!receiverRoot)
 				return;
 
-			// Get target positions
-			RE::NiPoint3 vaginaPos = GetNodeWorldPosition(receiver.get(), NODE_VAGINA_DEEP);
-			RE::NiPoint3 anusPos = GetNodeWorldPosition(receiver.get(), NODE_ANUS_DEEP);
-			bool hasVagina = !IsZeroPosition(vaginaPos) && receiverRoot->GetObjectByName(NODE_VAGINA_DEEP);
-			bool hasAnus = !IsZeroPosition(anusPos) && receiverRoot->GetObjectByName(NODE_ANUS_DEEP);
+			const auto* actorConfig = state.config;
+			const auto& config = GetConfig();
 
-			// Gather all potential penetrators (excluding self)
+			// Получаем позиции целей
+			RE::NiPoint3 vaginaPos = GetNodeWorldPosition(receiver.get(), actorConfig->vaginaDeepNode.c_str());
+			RE::NiPoint3 anusPos = GetNodeWorldPosition(receiver.get(), actorConfig->anusDeepNode.c_str());
+			bool hasVagina = !IsZeroPosition(vaginaPos) && !actorConfig->vaginaDeepNode.empty();
+			bool hasAnus = !IsZeroPosition(anusPos) && !actorConfig->anusDeepNode.empty();
+
+			// Собираем все пенетраторы
 			auto penetrators = GatherPenetrators(receiver.get());
 
-			// Clear old assignments
+			// Очищаем старые назначения
 			state.assignments.clear();
 
-			// For each penetrator, find the closest valid target
-			// A penetrator can only be assigned to ONE target (vagina OR anus)
+			// Для каждого пенетратора находим ближайшую цель
 			for (const auto& pen : penetrators) {
 				float distToVagina = hasVagina ? CalculateDistance(pen.position, vaginaPos) : 9999.0f;
 				float distToAnus = hasAnus ? CalculateDistance(pen.position, anusPos) : 9999.0f;
 
-				// Determine which target is closer and within range
-				float startDist = (pen.type == PenetratorType::Penis) ?
-				                      PENIS_PENETRATION_START_DISTANCE :
-				                      FINGER_PENETRATION_START_DISTANCE;
-
 				TargetType target = TargetType::None;
 				float distance = 9999.0f;
 
-				if (distToVagina < distToAnus && distToVagina < startDist) {
+				if (distToVagina < distToAnus && distToVagina < pen.startDistance) {
 					target = TargetType::Vagina;
 					distance = distToVagina;
-				} else if (distToAnus < distToVagina && distToAnus < startDist) {
+				} else if (distToAnus < distToVagina && distToAnus < pen.startDistance) {
 					target = TargetType::Anus;
 					distance = distToAnus;
 				}
@@ -438,15 +868,14 @@ namespace Data
 				if (target != TargetType::None) {
 					PenetratorAssignment assignment;
 					assignment.penetratorActor = pen.actorHandle;
-					assignment.penetratorType = pen.type;
+					assignment.nodeName = pen.nodeName;
 					assignment.targetType = target;
-					assignment.currentFactor = CalculatePenetrationFactor(distance, pen.type);
+					assignment.currentFactor = CalculatePenetrationFactor(distance, pen.startDistance, pen.fullDistance);
 					state.assignments.push_back(assignment);
 				}
 			}
 
-			// Calculate total penetration factors for each target
-			// Take the maximum factor from all penetrators targeting each hole
+			// Вычисляем максимальные факторы для каждой цели
 			float maxVaginaFactor = 0.0f;
 			float maxAnusFactor = 0.0f;
 
@@ -458,43 +887,46 @@ namespace Data
 				}
 			}
 
-			// Calculate target morph values
-			float targetVaginaMorph = maxVaginaFactor * MORPH_VAGINA_MAX;
-			float targetButtcheeksMorph = maxAnusFactor * MORPH_BUTTCHEEKS_SPREAD_MAX;
-			float targetAnusPenetrateMorph = maxAnusFactor * MORPH_ANUS_PENETRATE_MAX;
-			float targetAnusBackMorph = maxAnusFactor * MORPH_ANUS_BACK_MAX;
+			// Обновляем морфы с плавным переходом
+			float speed = config.globalSettings.morphTransitionSpeed;
 
-			// Smoothly transition morphs
-			state.currentVaginaMorph = LerpMorph(state.currentVaginaMorph, targetVaginaMorph, morphTransitionSpeed, deltaTime);
-			state.currentButtcheeksMorph = LerpMorph(state.currentButtcheeksMorph, targetButtcheeksMorph, morphTransitionSpeed, deltaTime);
-			state.currentAnusPenetrateMorph = LerpMorph(state.currentAnusPenetrateMorph, targetAnusPenetrateMorph, morphTransitionSpeed, deltaTime);
-			state.currentAnusBackMorph = LerpMorph(state.currentAnusBackMorph, targetAnusBackMorph, morphTransitionSpeed, deltaTime);
+			// Вагина морфы
+			for (const auto& morphInfo : actorConfig->vaginaMorphs) {
+				float targetValue = maxVaginaFactor * morphInfo.maxValue;
+				float& currentValue = state.currentMorphValues[morphInfo.name];
+				currentValue = LerpMorph(currentValue, targetValue, speed, deltaTime);
+			}
 
-			// Apply morphs
+			// Анус морфы
+			for (const auto& morphInfo : actorConfig->anusMorphs) {
+				float targetValue = maxAnusFactor * morphInfo.maxValue;
+				float& currentValue = state.currentMorphValues[morphInfo.name];
+				currentValue = LerpMorph(currentValue, targetValue, speed, deltaTime);
+			}
+
+			// Применяем морфы
 			ApplyMorphs(receiver.get(), state);
 		}
+
+		// ============================================================================
+		// MORPH APPLICATION
+		// ============================================================================
 
 		static void ApplyMorphs(RE::Actor* actor, const ReceiverState& state)
 		{
 			if (!actor || !LooksMenu::isInstalled)
 				return;
 
-			// Apply vagina morph
-			if (state.currentVaginaMorph > 0.001f) {
-				LooksMenu::SetMorph(actor, MORPH_VAGINA_PENETRATE, GetMorphKWD(), state.currentVaginaMorph);
-			} else {
-				LooksMenu::RemoveMorphsByName(actor, MORPH_VAGINA_PENETRATE);
-			}
+			auto kwd = GetMorphKWD();
+			if (!kwd)
+				return;
 
-			// Apply anus morphs
-			if (state.currentButtcheeksMorph > 0.001f || state.currentAnusPenetrateMorph > 0.001f || state.currentAnusBackMorph > 0.001f) {
-				LooksMenu::SetMorph(actor, MORPH_BUTTCHEEKS_SPREAD, GetMorphKWD(), state.currentButtcheeksMorph);
-				LooksMenu::SetMorph(actor, MORPH_ANUS_PENETRATE, GetMorphKWD(), state.currentAnusPenetrateMorph);
-				LooksMenu::SetMorph(actor, MORPH_ANUS_BACK, GetMorphKWD(), state.currentAnusBackMorph);
-			} else {
-				LooksMenu::RemoveMorphsByName(actor, MORPH_BUTTCHEEKS_SPREAD);
-				LooksMenu::RemoveMorphsByName(actor, MORPH_ANUS_PENETRATE);
-				LooksMenu::RemoveMorphsByName(actor, MORPH_ANUS_BACK);
+			for (const auto& [morphName, value] : state.currentMorphValues) {
+				if (value > 0.001f) {
+					LooksMenu::SetMorph(actor, morphName.c_str(), kwd, value);
+				} else {
+					LooksMenu::RemoveMorphsByName(actor, morphName.c_str());
+				}
 			}
 
 			LooksMenu::UpdateMorphs(actor);

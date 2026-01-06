@@ -8,6 +8,8 @@
 #include "Bridge/Papyrus/Papyrus.h"
 #include <random>
 
+#include "Misc/Utility.h"
+
 namespace logger = F4SE::log;
 
 #define PAPYRUS_BIND(funcName) a_VM->BindNativeMethod("NAF_Utils", #funcName, funcName, true)
@@ -99,8 +101,9 @@ namespace Papyrus
 		PAPYRUS_BIND(RemoveKeywordFromActors);
 		PAPYRUS_BIND(NormalizeTag);
 		PAPYRUS_BIND(ContainsPlayer);
-		PAPYRUS_BIND(FilterActors);
+		PAPYRUS_BIND(FilterActorsByBlockedKeywords);
 		PAPYRUS_BIND(SwapActorsAtIndices);
+		PAPYRUS_BIND(RotateFirstFemaleToNullIndexAtArray);
 		PAPYRUS_BIND(IsFemale);
 		PAPYRUS_BIND(AddTag);
 		PAPYRUS_BIND(RemoveTag);
@@ -322,21 +325,63 @@ namespace Papyrus
 		}
 	}
 
-	// Нормализует строковое значение тега, заменяя "None" на пустую строку;
+	static std::string_view trim_view(std::string_view sv)
+	{
+		auto is_space = [](char c) {
+			unsigned char uc = static_cast<unsigned char>(c);
+			return uc == ' ' || uc == '\t' || uc == '\n' || uc == '\r' || uc == '\f' || uc == '\v';
+		};
+		size_t b = 0;
+		while (b < sv.size() && is_space(sv[b])) ++b;
+		size_t e = sv.size();
+		while (e > b && is_space(sv[e - 1])) --e;
+		return sv.substr(b, e - b);
+	}
+
+	static std::string to_lower_ascii(std::string_view sv)
+	{
+		std::string out;
+		out.reserve(sv.size());
+		for (unsigned char c : sv) out.push_back(static_cast<char>(std::tolower(c)));
+		return out;
+	}
+
+	// Нормализует строковое значение тега, заменяя "None" на пустую строку, если тег содержит дубликаты - оставляет первый;
 	// @param sTag - строка тега для нормализации;
 	// @ return нормализованная строка(пустая, если была "None")
 	std::string NormalizeTag(std::monostate, std::string sTag)
 	{
-		auto lower = [](std::string s) {
-			std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-				return static_cast<char>(std::tolower(c));
-			});
-			return s;
-		};
-		if (lower(sTag) == "none") {
-			return "";
+		std::string_view sv(sTag);
+		// Проверка "none" (тримаем и сравниваем в нижнем регистре)
+		if (to_lower_ascii(trim_view(sv)) == "none") {
+			return {};
 		}
-		return sTag;
+
+		// Используем неизменяемую функцию SplitString (возвращает vector<string_view>)
+		auto parts = Utility::SplitString(sv, std::string_view{ "," });
+
+		std::unordered_set<std::string> seen;
+		seen.reserve(parts.size() * 2);
+
+		std::string result;
+		result.reserve(sTag.size());
+
+		bool firstAdded = false;
+		for (auto part : parts) {
+			std::string_view t = trim_view(part);
+			if (t.empty())
+				continue;
+			std::string key = to_lower_ascii(t);
+			if (seen.find(key) != seen.end())
+				continue;
+			seen.insert(std::move(key));
+			if (firstAdded)
+				result.push_back(',');
+			result.append(t.begin(), t.end());  // добавляем оригинальный (триммированный) текст
+			firstAdded = true;
+		}
+
+		return result;
 	}
 
 	// Проверяет, содержит ли массив акторов игрока;
@@ -351,58 +396,89 @@ namespace Papyrus
 		}
 		return false;
 	}
+	// Меняет местами акторов в массиве по указанным индексам;
+	// @param akActors - массив акторов;
+	// @param index1 - первый индекс;
+	// @param index2 - второй индекс;
+	// @ return массив с поменянными актерами
+	std::vector<RE::Actor*> SwapActorsAtIndices(std::monostate, std::vector<RE::Actor*> akActors, int index1, int index2) {
+		if (index1 < 0 || index2 < 0 || static_cast<size_t>(index1) >= akActors.size() || static_cast<size_t>(index2) >= akActors.size()) {
+			return akActors;  // Индексы вне диапазона, возвращаем исходный массив
+		}
+		std::swap(akActors[index1], akActors[index2]);
+		return akActors;
+	}
+
+	std::vector<RE::Actor*> RotateFirstFemaleToNullIndexAtArray(std::monostate, std::vector<RE::Actor*> akActors)
+	{
+		if (akActors.size() <= 1) {
+			return akActors;
+		}
+
+		if (akActors[0] && akActors[0]->GetSex() == RE::Actor::Sex::Female) {
+			return akActors;
+		}
+
+		const size_t n = akActors.size();
+		size_t femaleIndex = n;  // use n as 'not found' sentinel
+
+		for (size_t i = 1; i < n; ++i) {
+			RE::Actor* actor = akActors[i];
+			if (actor && actor->GetSex() == RE::Actor::Sex::Female) {
+				femaleIndex = i;
+				break;
+			}
+		}
+
+		// If no female found, return original
+		if (femaleIndex == n) {
+			return akActors;
+		}
+
+		// Move the found female to index 0 while preserving the relative order of other elements
+		// This is slightly more expensive than a swap but avoids unexpected reordering
+		std::rotate(akActors.begin(), akActors.begin() + femaleIndex, akActors.begin() + femaleIndex + 1);
+
+		return akActors;
+	}
 
 	// Фильтрует массив акторов, удаляя None и дубликаты;
 	// @param akActors - исходный массив акторов;
 	// @param kBlockedKeyword - keyword для проверки блокировки(опционально);
 	// @param kBusyKeyword - keyword для проверки занятости(опционально);
 	// @ return отфильтрованный массив акторов
-	std::vector<RE::Actor*> FilterActors(std::monostate, std::vector<RE::Actor*> akActors, RE::BGSKeyword* kBlockedKeyword, RE::BGSKeyword* kBusyKeyword)
+	std::vector<RE::Actor*> FilterActorsByBlockedKeywords(std::monostate, std::vector<RE::Actor*> akActors, std::vector<RE::BGSKeyword*> blockedKeywords)
 	{
 		std::vector<RE::Actor*> result;
 		if (akActors.empty()) {
 			return result;
 		}
+
 		result.reserve(akActors.size());
 		auto contains = [&result](RE::Actor* actor) {
 			return std::find(result.begin(), result.end(), actor) != result.end();
 		};
+
+		auto hasKeyword = [&blockedKeywords](RE::Actor* actor) {
+			for (RE::BGSKeyword* keyword : blockedKeywords)
+				if (keyword && actor->HasKeyword(keyword)) return true;
+			return false;
+		};
+
 		for (RE::Actor* actor : akActors) {
 			if (actor == nullptr) {
 				continue;  // Пропустить None
 			}
-			// Проверка на блокировку
-			if (kBlockedKeyword && actor->HasKeyword(kBlockedKeyword)) {
-				continue;  // Пропустить заблокированных акторов
-			}
-			// Проверка на занятость
-			if (kBusyKeyword && actor->HasKeyword(kBusyKeyword)) {
-				continue;  // Пропустить занятых акторов
-			}
-			// Проверка на дубликаты
+			
+			if (hasKeyword(actor))
+				continue;
+
 			if (contains(actor)) {
 				continue;  // Пропустить дубликаты
 			}
 			result.emplace_back(actor);
 		}
 		return result;
-	}
-
-	// Переставляет акторов местами в массиве;
-	// @param akActors - массив акторов(изменяется in - place);
-	// @param index1 - индекс первого актора;
-	// @param index2 - индекс второго актора
-	std::vector<RE::Actor*> SwapActorsAtIndices(std::monostate, std::vector<RE::Actor*> akActors, std::int32_t index1, std::int32_t index2)
-	{
-		size_t size = akActors.size();
-		if (index1 < 0 || index2 < 0 || static_cast<size_t>(index1) >= size || static_cast<size_t>(index2) >= size) {
-			return akActors;  // Индексы вне диапазона
-		}
-		if (index1 == index2) {
-			return akActors;  // Нет необходимости менять местами одинаковые индексы
-		}
-		std::swap(akActors[index1], akActors[index2]);
-		return akActors;
 	}
 
 	// Проверяет пол актора;

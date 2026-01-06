@@ -564,7 +564,7 @@ namespace Papyrus::NAF
 
 	bool PlayFaceAnimation(std::monostate, RE::Actor* a_actor, std::string a_id, bool a_loop, bool a_bodySync)
 	{
-		if (!a_actor) {
+		if (!a_actor || a_id.empty()) {
 			return false;
 		}
 		return FaceAnimation::FaceUpdateHook::LoadAndPlayAnimation(a_actor->GetActorHandle(), a_id, a_loop, a_bodySync);
@@ -726,11 +726,11 @@ namespace Papyrus::NAFBridge
 	using SceneSettings = structure_wrapper<"NAF", "SceneSettings">;
 	using SceneData = Papyrus::NAF::SceneData;
 	
-	void ApplyEquipmentSet(std::monostate, RE::Actor* akActor, std::string equipmentSetId)
+	bool ApplyEquipmentSet(std::monostate, RE::Actor* akActor, std::string equipmentSetId)
 	{
 		if ((akActor == nullptr) || equipmentSetId.empty())
-			return;
-		Data::ApplyEquipmentSet(akActor, equipmentSetId);
+			return false;
+		return Data::ApplyEquipmentSet(akActor, equipmentSetId);
 	}
 
 	bool GetPositionInstalled(std::monostate, std::string id)

@@ -186,7 +186,8 @@ namespace Scene
 			return { kNone };
 		}
 
-		static bool CompleteWalk(uint64_t instanceId) {
+		static bool CompleteWalk(uint64_t instanceId)
+		{
 			std::unique_lock l{ actorsWalkingLock };
 			auto iter = state->actorsWalkingToScene.find(instanceId);
 

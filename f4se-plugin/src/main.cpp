@@ -192,9 +192,9 @@ namespace
 							for (auto& es : m->bipedSlotNames) {
 								res += "\n\t\t["s + std::to_string(es.second) + "]"s);
 							}
-							res += "\n\tequipmentData : ";
-							for (auto& ed : m->datas) {
-								res += "\n\t\t["s + std::to_string(ed.first.) + "]"s);
+						 res += "\n\tequipmentData : ";
+						 for (auto& ed : m->datas) {
+							 res += "\n\t\t["s + std::to_string(ed.first.) + "]"s);
 							}*/
 
 									logger::info("{}\n", res);
@@ -223,7 +223,7 @@ namespace
 									std::string res("\n");
 
 									res += "ANIMATION GROUP id : ", res += m->id;
-									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+								 res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
 
 									logger::info("{}\n", res);
 								}
@@ -248,19 +248,19 @@ namespace
 							[&]() {
 								for (auto ref : Data::Global::Races) {
 									auto m = ref.second.second.get();
-									std::string res("\n");
+								 std::string res("\n");
 
 									res += "RACE id : ", res += m->id;
-									res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
-									res += "\n\tbaseForm : ", res += m->baseForm.get()->formEditorID;
-									if (m->startEvent.has_value())
-										res += "\n\tstartEvent : ", res += m->startEvent.value();
-									if (m->stopEvent.has_value())
-										res += "\n\tstopEvent : ", res += m->stopEvent.value();
-									if (m->graph.has_value())
-										res += "\n\tgraph : ", res += m->graph.value();
-									res += "\n\trequiresReset : ", res += m->requiresReset ? "true" : "false";
-									res += "\n\trequiresForceLoop : ", res += m->requiresForceLoop ? "true" : "false";
+								 res += "\n\tloadPriority : ", res += std::to_string(m->loadPriority);
+								 res += "\n\tbaseForm : ", res += m->baseForm.get()->formEditorID;
+								 if (m->startEvent.has_value())
+									 res += "\n\tstartEvent : ", res += m->startEvent.value();
+								 if (m->stopEvent.has_value())
+									 res += "\n\tstopEvent : ", res += m->stopEvent.value();
+								 if (m->graph.has_value())
+									 res += "\n\tgraph : ", res += m->graph.value();
+								 res += "\n\trequiresReset : ", res += m->requiresReset ? "true" : "false";
+								 res += "\n\trequiresForceLoop : ", res += m->requiresForceLoop ? "true" : "false";
 
 									logger::info("{}\n", res);
 								}
@@ -341,6 +341,12 @@ namespace
 							}();
 						}
 					}
+				}
+
+				if (!Data::FannyAnimationConfigManager::LoadConfig(std::string{ FANNY_ANIMATE_JSON_PATH }, std::string{ FANNY_ANIMATE_FALLBACK_JSON_PATH })) {
+					logger::error("Failed to load FannyAnimation configuration!");
+				} else {
+					logger::info("FannyAnimation configuration loaded successfully.");
 				}
 
 				break;
@@ -457,71 +463,40 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 
 void ReadIni()
 {
-	auto copyFile = [](const char* SRC, const char* DEST) {
-		std::ifstream src(SRC, std::ios::binary);
-		std::ofstream dest(DEST, std::ios::binary);
-		dest << src.rdbuf();
-		return src && dest;
-	};
-
-	auto GetDefaultSettings = []() {
-		std::string s("[Settings]\n");
-		s += "fdefaultDuration=60.000000\n"s;
-		s += "idefaultFurniturePrefence=10\n"s;
-		s += "fdefaultFurnitureScanRadius=3000.0\n"s;
-		s += "bdefaultIgnoreCombat=0\n"s;
-		s += "bdefaultSkipWalk=0\n"s;
-		s += "bdefaultSwapFemaleActorInArray=1\n"s;
-		s += "bdefaultHideHud=1\n"s;
-		s += "bdefaultSlowDrying=1\n"s;
-		s += "sdefaultExcludeTags=pose,utility\n"s;
-		s += "\n"s;
-		s += "[Overrides]\n"s;
-		s += "foverridesDuration=-1.000000\n"s;
-		s += "ioverridesFurniturePrefence=-1\n"s;
-		s += "foverridesFurnitureScanRadius=-500.000000\n"s;
-		s += "ioverridesIgnoreCombat=-1\n"s;
-		s += "ioverridesSkipWalk=-1\n"s;
-		s += "boverridesEmptyInclTags=0\n"s;
-		s += "\n"s;
-		s += "[Debug]\n"s;
-		s += "bdebugMessages=0\n"s;
-		s += "fdebugSlowScriptTime=0.000000\n"s;
-		s += "bdebugAnimations=0\n"s;
-		s += "bdebugPositions=0\n"s;
-		s += "bdebugFaceAnims=0\n"s;
-		s += "bdebugMorphSets=0\n"s;
-		s += "bdebugEquipmentSets=0\n"s;
-		s += "bdebugActions=0\n"s;
-		s += "bdebugAnimationGroups=0\n"s;
-		s += "bdebugPositionTrees=0\n"s;
-		s += "bdebugRaces=0\n"s;
-		s += "bdebugGraphInfos=0\n"s;
-		s += "bdebugOverlays=0\n"s;
-		s += "bdebugProtectedKeywords=0\n"s;
-		s += "bdebugFurnitures=0\n"s;
-		return s;
-	};
-
 	auto AllKeys = []() {
 		std::vector<std::tuple<std::string, std::string, std::string>> m;
-		m.push_back(std::tuple("60.000000"s, "fdefaultDuration"s, "Settings"s));
-		m.push_back(std::tuple("10"s, "idefaultFurniturePrefence"s, "Settings"s));
-		m.push_back(std::tuple("3000.0"s, "fdefaultFurnitureScanRadius"s, "Settings"s));
-		m.push_back(std::tuple("0"s, "bdefaultIgnoreCombat"s, "Settings"s));
-		m.push_back(std::tuple("0"s, "bdefaultSkipWalk"s, "Settings"s));
-		m.push_back(std::tuple("1"s, "bdefaultSwapFemaleActorInArray"s, "Settings"s));
-		m.push_back(std::tuple("1"s, "bdefaultHideHud"s, "Settings"s));
-		m.push_back(std::tuple("1"s, "bdefaultSlowDrying"s, "Settings"s));
-		m.push_back(std::tuple("pose,utility"s, "sdefaultExcludeTags"s, "Settings"s));
 
-		m.push_back(std::tuple("-1.000000"s, "foverridesDuration"s, "Overrides"s));
-		m.push_back(std::tuple("-1"s, "ioverridesFurniturePrefence"s, "Overrides"s));
-		m.push_back(std::tuple("-500.000000"s, "foverridesFurnitureScanRadius"s, "Overrides"s));
-		m.push_back(std::tuple("-1"s, "ioverridesIgnoreCombat"s, "Overrides"s));
-		m.push_back(std::tuple("-1"s, "ioverridesSkipWalk"s, "Overrides"s));
-		m.push_back(std::tuple("0"s, "boverridesEmptyInclTags"s, "Overrides"s));
+		// [Settings]
+		m.push_back(std::tuple("5"s, "iMaxFurnitureSearchTimeSeconds"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bSwapFemaleActorInArray"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bHideHud"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bSlowDrying"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bCheckFor3dLoaded"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bOverrideEmptyInclTags"s, "Settings"s));
+		m.push_back(std::tuple("1"s, "bAnimateFannies"s, "Settings"s));
+		m.push_back(std::tuple("3"s, "bDebugLevel"s, "Settings"s));
+		m.push_back(std::tuple("pose,utility"s, "sDefaultExcludeTags"s, "Settings"s));
+		m.push_back(std::tuple("Belly,Belly_Mutant,Anal,Breasts,Breasts_Mutant,DP,M_Back,M_Back_Mutant,M_Chest,M_Chest_Mutant"s, "sSlowDryingOverlayIds"s, "Settings"s));
+		m.push_back(std::tuple("171"s, "iCustomAAFVersion"s, "Settings"s));
+		m.push_back(std::tuple("0"s, "bTryRunSceneIfPrepareFailed"s, "Settings"s));
 
+		// [SceneDefaults]
+		m.push_back(std::tuple("60.000000"s, "fSceneDuration"s, "SceneDefaults"s));
+		m.push_back(std::tuple("100"s, "iFurniturePreference"s, "SceneDefaults"s));
+		m.push_back(std::tuple("3000.0"s, "fFurnitureScanRadius"s, "SceneDefaults"s));
+		m.push_back(std::tuple("0"s, "bIgnoreCombat"s, "SceneDefaults"s));
+		m.push_back(std::tuple("0"s, "bSkipWalk"s, "SceneDefaults"s));
+		m.push_back(std::tuple("0"s, "bForceNPCControll"s, "SceneDefaults"s));
+
+		// [SceneOverrides]
+		m.push_back(std::tuple("-1.000000"s, "fSceneDuration"s, "SceneOverrides"s));
+		m.push_back(std::tuple("-1"s, "iFurniturePreference"s, "SceneOverrides"s));
+		m.push_back(std::tuple("-1.000000"s, "fFurnitureScanRadius"s, "SceneOverrides"s));
+		m.push_back(std::tuple("0"s, "iIgnoreCombat"s, "SceneOverrides"s));
+		m.push_back(std::tuple("0"s, "iSkipWalk"s, "SceneOverrides"s));
+		m.push_back(std::tuple("0"s, "iForceNPCControll"s, "SceneOverrides"s));
+
+		// [Debug]
 		m.push_back(std::tuple("0"s, "bdebugMessages"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "fdebugSlowScriptTime"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "bdebugAnimations"s, "Debug"s));
@@ -537,30 +512,100 @@ void ReadIni()
 		m.push_back(std::tuple("0"s, "bdebugOverlays"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "bdebugProtectedKeywords"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "bdebugFurnitures"s, "Debug"s));
+
 		return m;
 	};
 
-	std::string file = [copyFile, GetDefaultSettings]() {
-		if (std::filesystem::exists(MCM_INI_PATH)) {
-			return std::string(MCM_INI_PATH);
-		} else if (std::filesystem::exists(MCM_INI_PATH_ALT)) {
-			std::ofstream file(MCM_INI_PATH_ALT);
-			if (file.is_open()) {
-				file << GetDefaultSettings();
-				file.close();
-				copyFile(MCM_INI_PATH_ALT, MCM_INI_PATH);
-				return std::string(MCM_INI_PATH);
-			}
-		}
-		return ""s;
-	}();
+	// Get all default keys
+	std::vector<std::tuple<std::string, std::string, std::string>> allSettings = AllKeys();
+	
+	// Map to store final values: section -> (key -> value)
+	std::unordered_map<std::string, std::unordered_map<std::string, std::string>> finalValues;
+	
+	// Initialize with defaults from AllKeys
+	for (const auto& setting : allSettings) {
+		const auto& defaultValue = std::get<0>(setting);
+		const auto& key = std::get<1>(setting);
+		const auto& section = std::get<2>(setting);
+		finalValues[section][key] = defaultValue;
+	}
 
-	if (!file.empty()) {
-		ini::map map(file);
-		std::vector<std::tuple<std::string, std::string, std::string>> settings = AllKeys();
-		for (auto& s : settings) {
-			if (!map.contains(get<1>(s), get<2>(s)))
-				map.set(get<0>(s), get<1>(s), get<2>(s));
+	// Try to load settings from MCM_INI_PATH_ALT if it exists
+	if (std::filesystem::exists(MCM_INI_PATH_ALT)) {
+		try {
+			ini::map altMap(MCM_INI_PATH_ALT);
+			// Override defaults with values from ALT path
+			for (const auto& setting : allSettings) {
+				const auto& key = std::get<1>(setting);
+				const auto& section = std::get<2>(setting);
+				if (auto value = altMap.get<std::string>(key, section); value.has_value()) {
+					finalValues[section][key] = value.value();
+				}
+			}
+		} catch (...) {
+			logger::warn("Failed to load settings from {}, using defaults", MCM_INI_PATH_ALT);
 		}
+	}
+
+	// Try to load settings from MCM_INI_PATH if it exists
+	if (std::filesystem::exists(MCM_INI_PATH)) {
+		try {
+			ini::map existingMap(MCM_INI_PATH);
+			// Override with values from main path
+			for (const auto& setting : allSettings) {
+				const auto& key = std::get<1>(setting);
+				const auto& section = std::get<2>(setting);
+				if (auto value = existingMap.get<std::string>(key, section); value.has_value()) {
+					finalValues[section][key] = value.value();
+				}
+			}
+		} catch (...) {
+			logger::warn("Failed to load settings from {}, will create new file", MCM_INI_PATH);
+		}
+	}
+
+	// Create directory if it doesn't exist
+	try {
+		std::filesystem::path iniPath(MCM_INI_PATH);
+		if (iniPath.has_parent_path()) {
+			std::filesystem::create_directories(iniPath.parent_path());
+		}
+	} catch (std::exception& ex) {
+		logger::error("Failed to create directory for {}: {}", MCM_INI_PATH, ex.what());
+		return;
+	}
+
+	// Create/recreate the ini file with all settings
+	try {
+		std::ofstream outFile(MCM_INI_PATH, std::ios::trunc);
+		if (!outFile.is_open()) {
+			logger::error("Failed to open {} for writing", MCM_INI_PATH);
+			return;
+		}
+
+		// Write settings grouped by section
+		std::unordered_map<std::string, bool> sectionsWritten;
+		
+		for (const auto& setting : allSettings) {
+			const auto& key = std::get<1>(setting);
+			const auto& section = std::get<2>(setting);
+			
+			// Write section header if this is the first key in this section
+			if (sectionsWritten.find(section) == sectionsWritten.end()) {
+				if (!sectionsWritten.empty()) {
+					outFile << "\n";  // Add blank line between sections
+				}
+				outFile << "[" << section << "]\n";
+				sectionsWritten[section] = true;
+			}
+			
+			// Write key=value
+			outFile << key << "=" << finalValues[section][key] << "\n";
+		}
+
+		outFile.close();
+		logger::info("Successfully saved settings to {}", MCM_INI_PATH);
+	} catch (...) {
+		logger::error("Failed to save settings to {}", MCM_INI_PATH);
 	}
 }

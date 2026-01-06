@@ -77,9 +77,12 @@ namespace Papyrus
 		PAPYRUS_BIND(CompleteWalkForActor);
 		PAPYRUS_BIND(CompleteWalkForScene);
 		PAPYRUS_BIND(FindPositionBySceneSettings);
+		PAPYRUS_BIND(ApplyEquipmentSet);
 		PAPYRUS_BIND(ValidateSceneParamsIgnoreInScene);
+		PAPYRUS_BIND(GetPositionInstalled);
 		PAPYRUS_BIND(GetFurnitureList);
 		PAPYRUS_BIND(GetOverlay);
+
 		return true;
 	}
 #undef PAPYRUS_BIND

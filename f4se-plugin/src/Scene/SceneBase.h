@@ -307,7 +307,6 @@ namespace Scene
 		//{
 		//	offset.clear();
 		//	offset = new_offset;
-		//}
 		////NAF Bridge end
 
 		virtual bool Init(std::shared_ptr<const Data::Position> position) override
@@ -317,7 +316,25 @@ namespace Scene
 			controlSystem = GetControlSystem(position);
 			baseLocation = location;
 			baseAngle = angle;
-			SetDuration(settings.duration);
+			
+			// AnimationGroupSystem and PositionTreeSystem manage their own timing
+			// Only set duration for regular animations
+			/*if (position->posType == Data::Position::kAnimation) {
+				SetDuration(settings.duration);
+			}*/
+
+			bool shouldSetDuration = (position->posType == Data::Position::kAnimation);
+			if (position->posType == Data::Position::kAnimationGroup) {
+				auto group = Data::GetAnimationGroup(position->idForType);
+				if (group && group->sequential == false) {
+					shouldSetDuration = true;
+				}
+			}
+
+			if (shouldSetDuration) {
+				SetDuration(settings.duration);
+			}
+
 			return true;
 		}
 
@@ -424,7 +441,6 @@ namespace Scene
 			tasks.StopAll();
 			SetAnimMult(100);
 
-			int count = 0; // NAF Bridge fix scale after scene if scale was overridden
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap& props) {
 				currentActor->EnableCollision();
 				currentActor->SetNoCollision(false);
@@ -452,43 +468,36 @@ namespace Scene
 					currentActor->EvaluatePackage(false, true);
 				}
 
-				auto getSerializableActorHandle = [this](RE::Actor* actor) {
-					for (auto& el : actors) {
-						if (el.first.get().get() == actor) {
-							return el.first;
-						}
-					}
-					return SerializableActorHandle{};
-				};
-
 				// NAF Bridge fix scale after scene if scale was overridden
-				/*if (!Data::Settings::Values.bDisableRescaler) {
-					currentActor->SetScale(1.0f);
-				}*/
-
-				if (settings.initialScales.empty()) {
+				// Look up initial scale by actor's FormID
+				uint32_t actorFormID = currentActor->formID;
+				auto scaleIt = settings.initialScales.find(actorFormID);
+				
+				if (scaleIt == settings.initialScales.end()) {
+					// No saved scale for this actor - use default behavior
 					if (!Data::Settings::Values.bDisableRescaler) {
 						currentActor->SetScale(1.0f);
 					}
 				} else {
-					auto& initialScales = settings.initialScales;
-		
+					float targetScale = scaleIt->second;
 					constexpr float EPSILON = 0.001f;
-					auto not_equal = [](float a, float b) {
-						
-						return std::fabs(a - b) > EPSILON;
-					};
-
-					if (count < initialScales.size()) {
-						currentActor->SetScale(initialScales[count]);
-						float iScale = currentActor->GetScale();
-						// Needs because scale is refScale * baseScale, and getScale() returns refScale * baseScale, but SetScale() sets refScale only.
-						if (not_equal(iScale, initialScales[count]) && std::fabs(iScale) > EPSILON) {
-							currentActor->SetScale(initialScales[count] / (iScale / initialScales[count]));
-						}
+					
+					// First attempt to set the scale
+					currentActor->SetScale(targetScale);
+					float actualScale = currentActor->GetScale();
+					
+					// GetScale() returns refScale * baseScale, but SetScale() sets refScale only.
+					// If actual scale doesn't match target, we need to compensate for baseScale.
+					// actualScale = setScale * baseScale
+					// We want: targetScale = newSetScale * baseScale
+					// So: newSetScale = targetScale / baseScale = targetScale / (actualScale / setScale)
+					// Since we set setScale = targetScale: newSetScale = targetScale / (actualScale / targetScale) = targetScale^2 / actualScale
+					if (std::fabs(actualScale - targetScale) > EPSILON && std::fabs(actualScale) > EPSILON) {
+						float baseScale = actualScale / targetScale;  // baseScale = actualScale / refScale (where refScale was set to targetScale)
+						float compensatedScale = targetScale / baseScale;
+						currentActor->SetScale(compensatedScale);
 					}
 				}
-				++count;
 				// NAF Bridge fix scale end
 			},
 				false);
@@ -776,13 +785,24 @@ namespace Scene
 			bool allActorsReady = true;
 			float minTime = 0.0f;
 			size_t i = 0;
+			size_t readyCount = 0;
+			bool playerReady = true;
+
+			// NAF Bridge fix for player sync issue
+			// In some kind of reason player can be not ready while other actors are ready.
+			// Despite this, the player still participates correctly in the scene. Therefore, we use this workaround.
+			// Fill syncInfoVec entries only for actors that returned valid times
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap&) {
 				if (BodyAnimation::SmartIdle::GetGraphTime(currentActor, cachedSyncInfo) &&
 					cachedSyncInfo.current >= 0.0f) {
 					if (currentActor == player && cachedSyncInfo.current <= playerSyncOffset) {
+						// Player reported time but it's below the sync offset threshold -> treat as not ready
+						playerReady = false;
 						allActorsReady = false;
+						return;
 					}
 
+					// Accept this actor's timing
 					auto& ele = syncInfoVec[i];
 					ele.actor.reset(currentActor);
 					ele.currentAnimTime = cachedSyncInfo.current + ((currentActor == player) * playerSyncOffset);
@@ -793,14 +813,26 @@ namespace Scene
 					minTime += ele.currentAnimTime * noActorsReady;
 					noActorsReady = false;
 					minTime = std::min(minTime, ele.currentAnimTime);
-					i++;
+					++i;
+					++readyCount;
 				} else {
+					// Mark actor (and possibly player) as not ready
 					allActorsReady = false;
+					if (currentActor == player) {
+						playerReady = false;
+					}
 				}
 			});
 
-			if (minTime > 0 && allActorsReady) {
-				for (auto& info : syncInfoVec) {
+			// If player is not ready but at least one other actor is ready and there is more than one actor,
+			// allow synchronization to proceed using only the ready actors (skip player).
+			if (!playerReady && readyCount > 0 && actors.size() > 1) {
+				allActorsReady = true;
+			}
+
+			if (minTime > 0 && allActorsReady && readyCount > 0) {
+				for (size_t idx = 0; idx < i; ++idx) {
+					auto& info = syncInfoVec[idx];
 					if (minTime < info.totalAnimTime) {
 						BodyAnimation::SmartIdle::SetGraphTime(info.actor.get(), minTime - ((info.actor.get() == player) * playerSyncOffset));
 					}
@@ -864,7 +896,13 @@ namespace Scene
 			}
 
 			if (trackAnimTime) {
+				// NAF Bridge fix for player sync issue
+				// In some kind of reason player can be not ready while other actors are ready.
+				// Despite this, the player still participates correctly in the scene. Therefore, we use this workaround.
 				auto trackingActor = actors.begin()->first.get();
+				if (trackingActor.get() == RE::PlayerCharacter::GetSingleton() && actors.size() > 1) {
+					trackingActor = (++actors.begin())->first.get();
+				}
 				if (trackingActor != nullptr &&
 					BodyAnimation::SmartIdle::GetGraphTime(trackingActor.get(), cachedSyncInfo) &&
 					cachedSyncInfo.current >= 0.0f) {
@@ -1016,8 +1054,8 @@ namespace Scene
 				}*/
 			}
 			//NAFBridge end
-			//NAF Bridge scale fix : save initial scale 
-			newScene->settings.initialScales.push_back(a->GetScale());
+			//NAF Bridge scale fix : save initial scale by FormID
+			newScene->settings.initialScales[a->formID] = a->GetScale();
 			//NAF Bridge scale fix end
 			if (a->parentCell != locationRef->parentCell)
 				a->WarpToRef(locationRef.get());

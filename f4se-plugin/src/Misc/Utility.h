@@ -5,6 +5,8 @@
 #include <shared_mutex>
 #include <random>
 
+namespace logger = F4SE::log;
+
 #define ALPHANUMERIC_UNDERSCORE_HYPHEN "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
 
 class Utility

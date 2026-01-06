@@ -16,8 +16,9 @@ namespace Papyrus
 	void RemoveKeywordFromActors(std::monostate, std::vector<RE::Actor*> akActors, RE::BGSKeyword* keyword);
 	std::string NormalizeTag(std::monostate, std::string sTag);
 	bool ContainsPlayer(std::monostate, std::vector<RE::Actor*> akActors);
-	std::vector<RE::Actor*> FilterActors(std::monostate, std::vector<RE::Actor*> akActors, RE::BGSKeyword* kBlockedKeyword, RE::BGSKeyword* kBusyKeyword);
-	std::vector<RE::Actor*> SwapActorsAtIndices(std::monostate, std::vector<RE::Actor*> akActors, std::int32_t index1, std::int32_t index2);
+	std::vector<RE::Actor*> SwapActorsAtIndices(std::monostate, std::vector<RE::Actor*> akActors, int index1, int index2);
+	std::vector<RE::Actor*> RotateFirstFemaleToNullIndexAtArray(std::monostate, std::vector<RE::Actor*> akActors);
+	std::vector<RE::Actor*> FilterActorsByBlockedKeywords(std::monostate, std::vector<RE::Actor*> akActors, std::vector<RE::BGSKeyword*> kBlockedKeyword);
 	bool IsFemale(std::monostate, RE::Actor* akActor);
 	std::string AddTag(std::monostate, std::string sTags, std::string sNewTag);
 	std::string RemoveTag(std::monostate, std::string sTags, std::string sTagToRemove, int removeAll);

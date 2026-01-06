@@ -254,8 +254,8 @@ namespace BodyAnimation
 				isPlayer = (actor == RE::PlayerCharacter::GetSingleton());
 			}
 
-			// Пропускаем блокировку для игрока иначе где-то происходит дедлок
-			if (isPlayer) {
+			// Пропускаем блокировку для игрока, иначе где-то происходит дедлок
+			if (isPlayer /*&& RE::PlayerCharacter::GetSingleton()->HasKeyword(Data::Forms::NAFInSceneKW) == false*/) {
 				return;
 			}
 
