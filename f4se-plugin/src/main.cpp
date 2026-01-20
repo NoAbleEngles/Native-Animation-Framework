@@ -468,11 +468,12 @@ void ReadIni()
 
 		// [Settings]
 		m.push_back(std::tuple("5"s, "iMaxFurnitureSearchTimeSeconds"s, "Settings"s));
+		m.push_back(std::tuple("50.0"s, "fOccupiedFurnitureSearchRadius"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bSwapFemaleActorInArray"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bHideHud"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bSlowDrying"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bCheckFor3dLoaded"s, "Settings"s));
-		m.push_back(std::tuple("1"s, "bOverrideEmptyInclTags"s, "Settings"s));
+		m.push_back(std::tuple("0"s, "bOverrideEmptyInclTags"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bAnimateFannies"s, "Settings"s));
 		m.push_back(std::tuple("3"s, "bDebugLevel"s, "Settings"s));
 		m.push_back(std::tuple("pose,utility"s, "sDefaultExcludeTags"s, "Settings"s));
@@ -497,8 +498,6 @@ void ReadIni()
 		m.push_back(std::tuple("0"s, "iForceNPCControll"s, "SceneOverrides"s));
 
 		// [Debug]
-		m.push_back(std::tuple("0"s, "bdebugMessages"s, "Debug"s));
-		m.push_back(std::tuple("0"s, "fdebugSlowScriptTime"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "bdebugAnimations"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "bdebugPositions"s, "Debug"s));
 		m.push_back(std::tuple("0"s, "bdebugFaceAnims"s, "Debug"s));

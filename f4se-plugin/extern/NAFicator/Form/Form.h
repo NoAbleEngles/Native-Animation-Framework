@@ -56,6 +56,7 @@ public:
 	bool operator==(const Form& f) const;
 	bool has_value() { return hasValue; }
 	std::string get_form_str() const;
+	std::string get_source_str() const;
 	virtual std::string make_archive_string() const;
 };
 

@@ -114,38 +114,39 @@ std::shared_ptr<Form> Archive::find_and_apply(const std::string& form, const std
 };
 
 std::shared_ptr<Form> Archive::find_and_apply(std::shared_ptr<Form> form, const std::function<std::shared_ptr<Form>(const std::string&)>& apply)
-{	
-	std::unique_lock l(lock);
-	
-	std::filesystem::path pth(std::filesystem::current_path().string() + Archive::get_singleton()->path_to_archive);
-	pth.make_preferred();
-	file.open(pth, Archive::read);
-	if (auto e = file.rdstate(); !file.is_open() || e != 0) {
-		logger::error("'find_and_apply' couldn't open archive : {}, iostatebit {}", form->make_archive_string(), e);
-		return std::shared_ptr<Form>(nullptr);
+{
+	// Проверка входных данных
+	if (!form || !form->has_value()) {
+		return nullptr;
 	}
 
-	auto close = [&, this]() {
-		file.seekg(0);
-		file.close();
-		file.clear();
-	};
+	std::unique_lock l(lock);
 
-	std::string str;
-	while (!file.eof()) {
-		str.clear();
-		getline(file, str);
+	std::filesystem::path pth = std::filesystem::current_path() / Archive::get_singleton()->path_to_archive;
+	pth.make_preferred();
+
+	std::ifstream archiveFile(pth, std::ios::binary);
+	if (!archiveFile.is_open()) {
+		logger::error("'find_and_apply' couldn't open archive : {}", form->make_archive_string());
+		return nullptr;
+	}
+
+	std::string line;
+	while (std::getline(archiveFile, line)) { 
+		if (line.empty())
+			continue;
 		std::vector<std::string> del;
-		utils::delim(str, ","s, del);
-		if (!del.empty() && del.size() > 1) {
+		utils::delim(line, ","s, del);
+		if (del.size() >= 3) {  
 			if (compare_formId_string(del[1], form->m_form) && compare_source_string(del[2], form->m_source)) {
-				close();
-				return apply(str);
+				archiveFile.close(); 
+				return apply(line);
 			}
 		}
 	}
-	close();
-	return std::shared_ptr<Form>(nullptr);
+
+	archiveFile.close();
+	return nullptr;
 }
 
 std::shared_ptr<Form> extract(std::shared_ptr<Form> form)
@@ -162,33 +163,61 @@ std::shared_ptr<Form> extract(std::shared_ptr<Form> form)
 
 std::shared_ptr<Form> put(std::shared_ptr<Form> form)
 {
-	auto find = [&](const std::string& str) {
-		return Archive::get_singleton()->get_form(str, form);
-	};
+	if (!form || !form->has_value())
+		return form;
 
-	std::filesystem::path pth;
-	auto& file = Archive::get_singleton()->file;
-	auto open = [&]() {
-		pth = std::filesystem::current_path().string() + Archive::get_singleton()->path_to_archive;
-		pth.make_preferred();
-		file.open(pth, Archive::read_write);
-	};
-	
-	if (form.get() && form->has_value()) {
-		if (Archive::get_singleton()->find_and_apply(form, find).get() == nullptr) {
-			std::unique_lock l(Archive::get_singleton()->lock);
-			open();
-			if (auto e = file.rdstate(); !file.is_open() || e != 0) {
-				logger::error("'put' couldn't put in archive : {}, iostatebit {}", form->make_archive_string(), e);
-				return std::shared_ptr<Form>(nullptr);
+	// ✅ Блокировка ДО проверки существования
+	std::unique_lock l(Archive::get_singleton()->lock);
+
+	// Получаем путь к архиву
+	std::filesystem::path pth = std::filesystem::current_path().string() + Archive::get_singleton()->path_to_archive;
+	pth.make_preferred();
+
+	// ✅ Проверяем существование записи ВНУТРИ блокировки
+	bool exists = false;
+	{
+		std::ifstream checkFile(pth, std::ios::binary);
+		if (checkFile.is_open()) {
+			std::string line;
+			while (std::getline(checkFile, line)) {
+				if (line.empty())
+					continue;
+				std::vector<std::string> del;
+				utils::delim(line, ","s, del);
+				if (del.size() >= 3) {
+					if (compare_formId_string(del[1], form->get_form_str()) && compare_source_string(del[2], form->get_source_str())) {
+						exists = true;
+						break;
+					}
+				}
 			}
-			file << form->make_archive_string() << '\n';	
-			/*logger::info("'put' added to archive : {}, {}", form->make_archive_string(), pth.string());
-		} else {
-			logger::info("'put' skipped (allready is in archive) : {}, {}", form->make_archive_string(), pth.string());*/
+			checkFile.close();
 		}
 	}
-	file.seekg(0);file.close();file.clear();
+
+	// Записываем только если записи нет
+	if (!exists) {
+		std::ofstream file(pth, std::ios::app | std::ios::binary);
+		if (!file.is_open()) {
+			logger::error("'put' couldn't open archive : {}", form->make_archive_string());
+			return nullptr;
+		}
+
+		file << form->make_archive_string() << '\n';
+		file.flush();
+
+		bool writeSuccess = file.good();
+		file.close();
+
+		if (!writeSuccess) {
+			logger::error("'put' write failed : {}", form->make_archive_string());
+			return nullptr;
+		}
+
+		logger::info("'put' added to archive : {}", form->make_archive_string());
+	} else {
+		logger::info("'put' skipped (already exists) : {}", form->make_archive_string());
+	}
 
 	return form;
 }
@@ -256,4 +285,9 @@ bool compare_source_string(const std::string& a, const std::string& b)
 std::string Form::get_form_str() const
 {
 	return m_form;
+}
+
+std::string Form::get_source_str() const
+{
+	return m_source;
 }

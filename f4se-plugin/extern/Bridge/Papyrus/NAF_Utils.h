@@ -4,6 +4,8 @@
 namespace Papyrus
 {
 	bool RegisterNAFUtilsFunctions(RE::BSScript::IVirtualMachine* a_VM);
+	std::vector<RE::Actor*> getActorsInRangeImpl(RE::TESObjectREFR* a_ref, std::uint32_t a_maxDistance, int a_maxActorsCount, 
+		bool a_includeDead, std::function<bool(const RE::Actor*)> filter);
 	std::string RemoveAllChar(std::monostate, std::string sStr, std::string sChar);
 	std::string CacheActorsToString(std::monostate, std::vector<RE::Actor*> akActors);
 	std::vector<RE::Actor*> GetActorsFromString(std::monostate, std::string sPackedActors);
@@ -23,4 +25,7 @@ namespace Papyrus
 	std::string AddTag(std::monostate, std::string sTags, std::string sNewTag);
 	std::string RemoveTag(std::monostate, std::string sTags, std::string sTagToRemove, int removeAll);
 	bool ContainsTag(std::monostate, std::string sTags, std::string sTag);
+	std::vector<RE::Actor*> GetActorsInRange(std::monostate, RE::TESObjectREFR* from, float distance, bool includeDead);
+	std::string ToHexString(std::monostate, std::uint32_t value);
+	std::uint32_t FromHexString(std::monostate, std::string hexString);
 }

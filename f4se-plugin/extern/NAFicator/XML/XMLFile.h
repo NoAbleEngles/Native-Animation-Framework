@@ -27,6 +27,20 @@ class XMLfile
 	void for_each_string(std::function<void(std::vector<std::string>::iterator&, XMLfile*)>);
 	std::vector<std::string> buffer;
 
+	// Helper methods for normalize()
+	void process_clean_commentaries();
+	void process_whitespace_removal();
+	void process_lexicography_check();
+	void process_duplicate_attributes();
+	void process_line_gluing();
+	std::string_view process_root_node_extraction();
+	void fix_GrayUserBP_animationGroupData();
+
+	// Helper methods for lexicography check
+	void apply_specific_file_fixes(std::vector<std::string>::iterator& it);
+	bool is_known_empty_attribute(std::string_view attr, std::unordered_set<std::string>& cache, bool& parsed);
+	void parse_xml_line_state_machine(std::vector<std::string>::iterator& it, std::unordered_set<std::string>& empty_attrs, bool& parsed_flag);
+
 public:
 	
 	static inline const std::unordered_map<std::string_view, std::pair<std::string_view, std::string_view>> valid_root_nodes = {

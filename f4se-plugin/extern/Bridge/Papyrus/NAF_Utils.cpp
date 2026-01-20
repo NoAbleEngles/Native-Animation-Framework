@@ -10,6 +10,10 @@
 
 #include "Misc/Utility.h"
 
+#include <ppl.h>
+
+namespace ppl = concurrency;
+
 namespace logger = F4SE::log;
 
 #define PAPYRUS_BIND(funcName) a_VM->BindNativeMethod("NAF_Utils", #funcName, funcName, true)
@@ -108,6 +112,7 @@ namespace Papyrus
 		PAPYRUS_BIND(AddTag);
 		PAPYRUS_BIND(RemoveTag);
 		PAPYRUS_BIND(ContainsTag);
+		PAPYRUS_BIND(GetActorsInRange);
 
 		logger::info("Registered NAF_Utils functions");
 
@@ -607,6 +612,109 @@ namespace Papyrus
 			pos = comma + 1;
 		}
 		return false;
+	}
+
+	/**
+	 * @brief Получает список актёров в радиусе от указанного объекта.
+	 * @param a_ref Ссылка на объект-центр поиска (по умолчанию игрок).
+	 * @param a_maxDistance Максимальная дистанция поиска.
+	 * @param a_maxActorsCount Максимальное количество актёров.
+	 * @param a_includeDead Включать ли мёртвых актёров.
+	 * @return Вектор указателей на найденных актёров.
+	 */
+	inline std::vector<RE::Actor*> getActorsInRangeImpl(RE::TESObjectREFR* a_ref,
+		std::uint32_t a_maxDistance, int a_maxActorsCount,
+		bool a_includeDead, std::function<bool(const RE::Actor*)> filter)
+	{
+		std::vector<RE::Actor*> result;
+
+		if (a_ref == nullptr)
+			return result;
+
+		auto originPos{ a_ref->GetPosition() };
+
+		const auto processLists = RE::ProcessLists::GetSingleton();
+
+		concurrency::parallel_for_each(processLists->highActorHandles.begin(), processLists->highActorHandles.end(),
+			[&](const RE::ActorHandle& actorHandle) {
+				const auto actorPtr = actorHandle.get();
+				const auto currentActor = actorPtr.get();
+				if (!currentActor) {
+					return;
+				}
+				if (!a_includeDead && currentActor->IsDead(true)) {
+					return;
+				}
+				if (currentActor == a_ref) {
+					return;
+				}
+				if (filter && filter(currentActor) == false) {
+					return;
+				}
+				if (originPos.GetDistance(currentActor->GetPosition()) <= a_maxDistance) {
+					// Блокируем доступ к вектору при добавлении элемента
+					static std::mutex mtx;
+					std::lock_guard<std::mutex> lock(mtx);
+					result.push_back(currentActor);
+				}
+			});
+
+		if (result.size() > a_maxActorsCount)
+			result.resize(a_maxActorsCount);
+		return result;
+	}
+
+	std::vector<RE::Actor*> GetActorsInRange(std::monostate, RE::TESObjectREFR* from, float distance, bool includeDead)
+	{
+		return getActorsInRangeImpl(from, distance, 0xFFFFFFFF, includeDead, nullptr);
+	}
+
+	/** 
+	* @brief Преобразует целочисленное значение в строку в шестнадцатеричном формате.
+	* @param value Целочисленное значение для преобразования.
+	* @return Шестнадцатеричная строка, представляющая значение.
+	*/
+	std::string ToHexString(std::monostate, std::uint32_t value) {
+		constexpr char hexChars[] = "0123456789ABCDEF";
+		std::string hexString;
+		hexString.reserve(8);
+		for (int i = 7; i >= 0; --i) {
+			hexString.push_back(hexChars[(value >> (i * 4)) & 0x0F]);
+		}
+		return hexString;
+	}
+
+	/**
+	* @brief Преобразует шестнадцатеричную строку в целочисленное значение.
+	* @param hexString Шестнадцатеричная строка для преобразования.
+	* @return Целочисленное значение, соответствующее шестнадцатеричной строке.
+	*/
+	std::uint32_t FromHexString(std::monostate, std::string hexString) {
+		// Trim whitespace
+		hexString = trim(hexString);
+		// Optional 0x/0X prefix
+		if (hexString.size() >= 2 && hexString[0] == '0' && (hexString[1] == 'x' || hexString[1] == 'X')) {
+			hexString = hexString.substr(2);
+		}
+		// Must be 1..8 hex digits
+		if (hexString.empty() || hexString.size() > 8) {
+			return 0;
+		}
+		std::uint32_t value = 0;
+		for (unsigned char c : hexString) {
+			value <<= 4;
+			if (c >= '0' && c <= '9') {
+				value |= static_cast<std::uint32_t>(c - '0');
+			} else if (c >= 'A' && c <= 'F') {
+				value |= static_cast<std::uint32_t>(c - 'A' + 10);
+			} else if (c >= 'a' && c <= 'f') {
+				value |= static_cast<std::uint32_t>(c - 'a' + 10);
+			} else {
+				// invalid character
+				return 0;
+			}
+		}
+		return value;
 	}
 }
 

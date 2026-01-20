@@ -55,18 +55,22 @@ bool HkxFileExists(const std::string& filename)
 
 bool process_file(const std::string& p_src, std::vector<XMLfile>& xmls, std::vector<std::string>& skipped)
 {
+	logger::info("📄 Processing file: {}", p_src);
+
 	try {
 		XMLfile xml_file(static_cast<const std::filesystem::path>(p_src));
 		if (xml_file.has_value()) {
+			logger::info("✅ File processed successfully: {}", p_src);
 			xmls.push_back(xml_file);
 			return true;
 		} else {
+			logger::warn("❌ File has no value: {}", p_src);
 			skipped.push_back(p_src + " : has no value");
 		}
 	} catch (const std::exception& e) {
-		LOG("Error processing {}: {}", p_src, e.what());
+		logger::error("💥 Exception processing {}: {}", p_src, e.what());
 	} catch (...) {
-		LOG("Unknown error processing {}", p_src);
+		logger::error("💥 Unknown error processing {}", p_src);
 	}
 	return false;
 }
@@ -77,33 +81,28 @@ void parse_files(const std::filesystem::path& from, std::vector<XMLfile>& xmls, 
 	xmls.clear();
 	skipped.clear();
 
+	// Обработка race data ДО основного цикла
 	auto RaceDataFile = std::filesystem::current_path() / "Data" / "NAFicator" / "NAF_raceData_Fallout4.xml";
-	
-	for (const auto& entry : std::filesystem::directory_iterator(from)) {
-		auto p_src = entry.path().string();
-		if (!RaceDataFile.empty()) {
-			if (std::filesystem::exists(RaceDataFile) && std::filesystem::file_size(RaceDataFile) >= 10) {
-				process_file(RaceDataFile.string(), xmls, skipped);
-				RaceDataFile.clear();
-			} else {
-				LOG("ERROR missed or empty {}", RaceDataFile.string());
-			}
-		}
+	if (std::filesystem::exists(RaceDataFile) && std::filesystem::file_size(RaceDataFile) >= 10) {
+		process_file(RaceDataFile.string(), xmls, skipped);
+	} else {
+		LOG("ERROR: missed or empty {}", RaceDataFile.string());
+	}
 
+	// Основной цикл
+	for (const auto& entry : std::filesystem::directory_iterator(from)) {
 		try {
 			if (entry.file_size() < 10) {
-				skipped.emplace_back(p_src + " : < 10 bytes");
+				skipped.emplace_back(entry.path().string() + " : < 10 bytes");
 				continue;
 			}
 			if (entry.path().extension() != ".xml") {
-				skipped.emplace_back(p_src + " : not .xml");
+				skipped.emplace_back(entry.path().string() + " : not .xml");
 				continue;
 			}
-			process_file(p_src, xmls, skipped);
+			process_file(entry.path().string(), xmls, skipped);
 		} catch (const std::exception& e) {
-			LOG("Error processing entry {}: {}", p_src, e.what());
-		} catch (...) {
-			LOG("Unknown error processing entry {}", p_src);
+			LOG("Error processing {}: {}", entry.path().string(), e.what());
 		}
 	}
 }

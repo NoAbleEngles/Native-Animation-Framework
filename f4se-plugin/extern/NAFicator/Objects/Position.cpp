@@ -106,6 +106,8 @@ namespace NAFicator
 
 	std::ostringstream& Position::ssprint(std::ostringstream& s) const
 	{
+		const bool is_effectively_valid = valid && (utils::string::to_lower(static_cast<const std::string>(linked_animation)) != "null");
+
 		auto print_tags = [this](std::ostringstream& stream) {
 			if (!tags.empty()) {
 				stream << " tags=\"";
@@ -154,7 +156,7 @@ namespace NAFicator
 			}
 		};
 
-		auto print_animation = [](Position::type l_type, const std::string& l_animation,std::ostringstream& stream) {
+		auto print_animation = [](Position::type l_type, const std::string& l_animation, std::ostringstream& stream) {
 			switch (l_type) {
 			case animation:
 				stream << " animation=\"";
@@ -169,16 +171,29 @@ namespace NAFicator
 			stream << l_animation << "\"";
 		};
 
-		s << "\n<!-- FILE : " << filename << (valid && (utils::string::to_lower(static_cast<const std::string>(linked_animation)) != "null") ? " -->\n" : "\n");
-		s << ((!valid && !log.empty()) ? (log + "\n\n"s) : "");
-		
-		if (id.empty()) {
-			s << "\t<position id=\"" << get_unknown_id() << "\"";
+		// Header comment with file + invalid reason (if any)
+		s << "\n<!-- FILE : " << filename;
+		if (is_effectively_valid) {
+			s << " -->\n";
 		} else {
-			s << "\t<position id=\"" << id << "\"";
+			s << "\n";
+			if (!log.empty()) {
+				s << log << "\n";
+			}
+			s << "-->\n";
+		}
+
+		const char* line_prefix = is_effectively_valid ? "\t" : "\t<!-- ";
+		const char* line_suffix = is_effectively_valid ? "" : " -->";
+
+		s << line_prefix;
+		if (id.empty()) {
+			s << "<position id=\"" << get_unknown_id() << "\"";
+		} else {
+			s << "<position id=\"" << id << "\"";
 		}
 		print_animation(linked_animation_type, linked_animation, s);
-		if (startMorphSet) 
+		if (startMorphSet)
 			s << " startMorphSet=\"" << startMorphSet.value() << "\"";
 		if (stopMorphSet)
 			s << " stopMorphSet=\"" << stopMorphSet.value() << "\"";
@@ -186,11 +201,12 @@ namespace NAFicator
 			s << " startEquipmentSet=\"" << startEquipmentSet.value() << "\"";
 		if (stopEquipmentSet)
 			s << " stopEquipmentSet=\"" << stopEquipmentSet.value() << "\"";
-		s << " isHidden=\"" << (isHidden ? "true\"" : "false\"");
+		s << " isHidden=\"" << (isHidden ? "true" : "false") << "\"";
 		print_tags(s);
 		print_locations(s);
 		print_offset(s);
-		s << "/>" << (valid && (utils::string::to_lower(static_cast<const std::string>(linked_animation)) != "null") ? "" : " -->");
+		s << "/>" << line_suffix;
+
 		return s;
 	}
 }
