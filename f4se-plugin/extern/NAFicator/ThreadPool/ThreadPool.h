@@ -7,7 +7,6 @@
 #include <thread>
 #include <vector>
 #include <chrono>
-#include <NAFicator/SimpleLog/slog.hpp>
 
 class ThreadPool
 {

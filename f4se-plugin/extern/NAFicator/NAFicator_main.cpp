@@ -20,7 +20,8 @@ using namespace std::literals;
 ini::map inimap(std::filesystem::current_path().string() + "\\Data\\Naficator.ini"s);
 std::string cachedMessage;    // Кэш для сообщения
 bool isErrorMessage = false;  // Флаг для определения типа сообщения
-bool voodoo_ready = false;
+std::atomic<bool> voodoo_ready{ false };
+
 std::filesystem::path Where = "";
 
 extern void AfterGameDataReady();
@@ -50,7 +51,7 @@ void start_up()
 		inimap.get<std::string>("sSkipEmptyAttributesInLog"s, "General"s);
 		inimap.get<bool>("bPrintDebugXMLs"s, "General"s);
 	} catch (...) {
-		logger::error("Bad ini settings, cancel NAFicator start...");
+		logger::critical("💥 Bad ini settings, cancel NAFicator start...");
 		cachedMessage = "Bad ini settings, cancel NAFicator start...";
 		isErrorMessage = true;  // Устанавливаем флаг ошибки
 		return;                 // Выход из функции, если произошла ошибка
@@ -81,16 +82,21 @@ void start_up()
 			return;                   // Выход из функции, если папка не существует
 		}
 
-		logger::info("NAFicator starts\nFROM: {}\nTO: {}", FROM, WHERE);
+		logger::info("🤪 NAFicator starts\nFROM: {}\nTO: {}", FROM, WHERE);
 		std::filesystem::path From(FROM);
 		From.make_preferred();
 		Where = WHERE;
 		Where.make_preferred();
 
 		START(From);
+		logger::info("🤪 NAFicator finished xmls processing! Wait for game data loaded...");
+	} else {
+		logger::info("🛑 NAFicator is disabled in ini, skip start.");
+		cachedMessage = "";
+		isErrorMessage = false;  // Устанавливаем флаг успеха
+		return;
 	}
 	
-	LOG("NAFicator finished xmls processing! Prepare to parse...");
 	cachedMessage = warn;    // Кэшируем сообщение об успешном завершении
 	isErrorMessage = false;  // Устанавливаем флаг успеха
 }
@@ -103,9 +109,11 @@ void MessageHandler(F4SE::MessagingInterface::Message* a_msg)
 
 	switch (a_msg->type) {
 	case F4SE::MessagingInterface::kGameDataReady:
-		if (voodoo_ready)
-			AfterGameDataReady();
-		voodoo_ready = true;
+		if (voodoo_ready.exchange(true) == false) {
+			return;
+		}
+		AfterGameDataReady();
+		logger::info("🧐 NAFicator finished!");
 		break;
 	default:
 		break;
@@ -114,7 +122,6 @@ void MessageHandler(F4SE::MessagingInterface::Message* a_msg)
 
 extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info)
 {
-	LOG.clearLog();
 	//auto path = logger::log_directory();
 	std::optional<std::filesystem::path> path("Data/NAFicator/"s);
 	path->make_preferred();
@@ -122,8 +129,6 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 		return false;
 	}
 
-	/**path /= std::fmt::format(FMT_STRING("{}.log"), Version::PROJECT);
-	path->make_preferred();*/
 	*path /= std::format("{}.log", ver::PROJECT);
 	path->make_preferred();
 	auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
@@ -131,26 +136,28 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 	auto log = std::make_shared<spdlog::logger>("global log"s, std::move(sink));
 
 	log->set_level(spdlog::level::info);
-	log->flush_on(spdlog::level::warn);
+	log->flush_on(spdlog::level::info);
 
 	spdlog::set_default_logger(std::move(log));
 	spdlog::set_pattern("[%d/%m/%Y - %T] [%^%l%$] %v"s);
 
-	LOG("{}", std::string(ver::NAME.begin(), ver::NAME.end()));
+	logger::info("{}", std::string(ver::NAME.begin(), ver::NAME.end()));
 	a_info->infoVersion = F4SE::PluginInfo::kVersion;
 	a_info->name = std::string(ver::NAME.begin(), ver::NAME.end()).c_str();
-	a_info->version = ver::MAJOR;
+	a_info->version = ver::computeVersionInt(ver::MAJOR, ver::MINOR, ver::PATCH);
 
 	if (a_f4se->IsEditor()) {
-		LOG("loaded in editor");
+		logger::critical("💥 Loaded in editor! Abort.");
 		return false;
 	}
 
 	const auto ver = a_f4se->RuntimeVersion();
 	if (ver != F4SE::RUNTIME_1_10_162 && ver != F4SE::RUNTIME_1_10_163) {
-		LOG("unsupported runtime v{}", ver.string());
+		logger::critical("💥 unsupported runtime v{} ! Abort.", ver.string());
 		return false;
 	}
+
+	logger::info("🤖 READY");
 
 	return true;
 }
@@ -161,11 +168,11 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 
 	const auto messaging = F4SE::GetMessagingInterface();
 	if (!messaging || !messaging->RegisterListener(MessageHandler)) {
-		LOG("Failed to get F4SE messaging interface, marking as incompatible.");
+		logger::critical("💥 Failed to get F4SE messaging interface, marking as incompatible. Abort.");
 		return false;
 	} else {
-		LOG("Registered with F4SE messaging interface.");
-		LOG("Starting...");
+		logger::info("✅ Registered with F4SE messaging interface.");
+		logger::info("🤪 Starting...");
 		start_up();
 	}
 

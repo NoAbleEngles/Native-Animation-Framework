@@ -27,7 +27,7 @@ namespace NAFicator
 						} else if (setting == 2) {
 							r[2] = 0;
 						}
-						LOG("Offset fixed in file : {}, id : {}", filename, id);
+						logger::info("Offset fixed in file : {}, id : {}", filename, id);
 					}
 				}
 			};

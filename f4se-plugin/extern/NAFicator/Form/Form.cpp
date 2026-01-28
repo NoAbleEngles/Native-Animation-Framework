@@ -122,7 +122,13 @@ std::shared_ptr<Form> Archive::find_and_apply(std::shared_ptr<Form> form, const 
 
 	std::unique_lock l(lock);
 
-	std::filesystem::path pth = std::filesystem::current_path() / Archive::get_singleton()->path_to_archive;
+	// Построение корректного пути: удаляем ведущий разделитель в конфигурном пути, если он есть
+	std::filesystem::path pth = std::filesystem::current_path();
+	std::string relPath = Archive::get_singleton()->path_to_archive;
+	if (!relPath.empty() && (relPath.front() == '\\' || relPath.front() == '/')) {
+		relPath.erase(0, 1);
+	}
+	pth /= relPath; // безопасное объединение
 	pth.make_preferred();
 
 	std::ifstream archiveFile(pth, std::ios::binary);
@@ -169,8 +175,13 @@ std::shared_ptr<Form> put(std::shared_ptr<Form> form)
 	// ✅ Блокировка ДО проверки существования
 	std::unique_lock l(Archive::get_singleton()->lock);
 
-	// Получаем путь к архиву
-	std::filesystem::path pth = std::filesystem::current_path().string() + Archive::get_singleton()->path_to_archive;
+	// Получаем путь к архиву. Удаляем ведущий разделитель, если указан в конфиге
+	std::filesystem::path pth = std::filesystem::current_path();
+	std::string relPath = Archive::get_singleton()->path_to_archive;
+	if (!relPath.empty() && (relPath.front() == '\\' || relPath.front() == '/')) {
+		relPath.erase(0, 1);
+	}
+	pth /= relPath;
 	pth.make_preferred();
 
 	// ✅ Проверяем существование записи ВНУТРИ блокировки

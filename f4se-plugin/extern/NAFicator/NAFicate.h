@@ -15,7 +15,6 @@
 #include <RE/Bethesda/BSResource.h>
 #include <NAFicator/Objects/ParsedObject.h>
 #include <NAFicator/ThreadPool/ThreadPool.h>
-#include <NAFicator/SimpleLog/slog.hpp>
 
 void START(const std::filesystem::path& from);
 RE::TESForm* get_form_from_string(const std::string& xFormID, const std::string& plugin);

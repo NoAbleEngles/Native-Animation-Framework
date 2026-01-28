@@ -89,7 +89,7 @@ namespace NAFicator
 				tmp.clear();
 			}
 
-			//Заполняем faceAnim
+			//Заполняем mfgSet
 			m(&tmp, Data::XMLUtil::Mapper::emptyStr, false, false, "", "mfgSet");
 			if (!tmp.empty()) {
 				a.faceAnim = tmp;
@@ -168,6 +168,25 @@ namespace NAFicator
 
 				return m;
 			}, "morph", "", false);
+
+			m.GetArray([&](Data::XMLUtil::Mapper& m) {
+				std::string path("");
+				std::string mid("");
+				float mto;
+				m(&path, Data::XMLUtil::Mapper::emptyStr, false, false, "value node has no 'path'", "path");
+				m(&mid, Data::XMLUtil::Mapper::emptyStr, false, false, "value node has no 'value'", "value");
+				m(&mto, 0.0f, false, false, "value node has no 'to'", "to");
+
+				if (!mid.empty() && path == "morph") {
+					if (!a.morphs.has_value()) {
+						a.morphs = std::map<std::string, float>();
+					}
+					a.morphs->emplace(mid, mto);
+				}
+
+				return m;
+			},
+				"value", "", false);
 
 			actors.push_back(a);
 			return m; },

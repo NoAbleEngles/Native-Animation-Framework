@@ -19,8 +19,6 @@ namespace logger = F4SE::log;
 
 //end
 
-#include <NAFicator/SimpleLog/slog.hpp>
-
 namespace utils
 {
 	inline bool copy_file(const std::string& SRC, const std::string& DEST)

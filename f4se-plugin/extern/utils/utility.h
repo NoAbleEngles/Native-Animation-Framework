@@ -8,7 +8,6 @@
 #include <utility>
 #include <stdexcept>
 #include <filesystem>
-#include <NAFicator/SimpleLog/slog.hpp>
 
 #define LOG slog::getInstance()
 

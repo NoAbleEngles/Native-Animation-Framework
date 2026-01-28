@@ -665,7 +665,22 @@ namespace Scene
 			cachedIdlesMap.clear();
 			ForEachActor([&](RE::Actor* a, ActorPropertyMap& props) {
 				auto hndl = a->GetActorHandle();
-				FaceAnimation::FaceUpdateHook::StopAnimation(hndl);
+				//FaceAnimation::FaceUpdateHook::StopAnimation(hndl);
+				// NAF Bridge: Only stop face animation if NOT managed by Action's mfgSet
+				bool hasMfgSetFromAction = false;
+				if (auto actions = GetProperty<Data::ActionSet>(props, kAction); actions.has_value()) {
+					for (auto& actionId : *actions) {
+						if (auto action = Data::GetAction(actionId); action != nullptr && action->mfgSet.has_value()) {
+							hasMfgSetFromAction = true;
+							break;
+						}
+					}
+				}
+
+				// Only stop face animation if not managed by Action
+				if (!hasMfgSetFromAction) {
+					FaceAnimation::FaceUpdateHook::StopAnimation(hndl);
+				}
 
 				if (auto idl = GetProperty<SerializableIdle>(props, kIdle); idl.has_value()) {
 					cachedIdlesMap[hndl].idle.SetIdleForm(idl.value());
@@ -783,10 +798,10 @@ namespace Scene
 		{
 			bool noActorsReady = true;
 			bool allActorsReady = true;
-			float minTime = 0.0f;
+			float minTime = std::numeric_limits<float>::infinity();
 			size_t i = 0;
 			size_t readyCount = 0;
-			bool playerReady = true;
+			std::optional<bool> playerReady = std::nullopt;
 
 			// NAF Bridge fix for player sync issue
 			// In some kind of reason player can be not ready while other actors are ready.
@@ -795,11 +810,14 @@ namespace Scene
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap&) {
 				if (BodyAnimation::SmartIdle::GetGraphTime(currentActor, cachedSyncInfo) &&
 					cachedSyncInfo.current >= 0.0f) {
-					if (currentActor == player && cachedSyncInfo.current <= playerSyncOffset) {
-						// Player reported time but it's below the sync offset threshold -> treat as not ready
-						playerReady = false;
-						allActorsReady = false;
-						return;
+					if (currentActor == player) {
+						if (cachedSyncInfo.current <= playerSyncOffset) {
+							// Player reported time but it's below the sync offset threshold -> treat as not ready
+							playerReady = false;
+							allActorsReady = false;
+							return;
+						}
+						playerReady = true;
 					}
 
 					// Accept this actor's timing
@@ -810,7 +828,8 @@ namespace Scene
 
 					//If this is the first actor, set minTime to its anim time to kick off the process.
 					//Use arithmetic here instead of a conditional to avoid an unneccesary branch.
-					minTime += ele.currentAnimTime * noActorsReady;
+					
+					// minTime += ele.currentAnimTime * noActorsReady; //Bridge removed
 					noActorsReady = false;
 					minTime = std::min(minTime, ele.currentAnimTime);
 					++i;
@@ -824,10 +843,11 @@ namespace Scene
 				}
 			});
 
-			// If player is not ready but at least one other actor is ready and there is more than one actor,
-			// allow synchronization to proceed using only the ready actors (skip player).
-			if (!playerReady && readyCount > 0 && actors.size() > 1) {
+			// If only the player is not ready, consider all actors ready
+			if (playerReady.has_value() && playerReady.value() == false && actors.size() - readyCount == 1) {
 				allActorsReady = true;
+				//Force sync even if only player
+				readyCount += 1;
 			}
 
 			if (minTime > 0 && allActorsReady && readyCount > 0) {

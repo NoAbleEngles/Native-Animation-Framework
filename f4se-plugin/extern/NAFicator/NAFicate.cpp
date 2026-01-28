@@ -1,13 +1,20 @@
 #pragma once
 #include <NAFicator/NAFicate.h>
 extern ini::map inimap;
-extern bool voodoo_ready;
+extern std::atomic<bool> voodoo_ready;
 extern void MessageHandler(F4SE::MessagingInterface::Message* a_msg);
 extern void outputCachedMessage();
 
 void AfterGameDataReady()
 {
-	LOG("Do things after game data ready ...");
+	static std::atomic<bool> already_run{ false };
+	// Ensure this runs only once
+	if (already_run.exchange(true)) {
+		logger::info("AfterGameDataReady already executed, skipping.");
+		return;
+	}
+	
+	logger::info("🧰 Start processing data...");
 	fixes::hkxficate();
 	fixes::remove_missed_animations();
 	fixes::check_and_clear_furniture_bad_links();
@@ -86,7 +93,7 @@ void parse_files(const std::filesystem::path& from, std::vector<XMLfile>& xmls, 
 	if (std::filesystem::exists(RaceDataFile) && std::filesystem::file_size(RaceDataFile) >= 10) {
 		process_file(RaceDataFile.string(), xmls, skipped);
 	} else {
-		LOG("ERROR: missed or empty {}", RaceDataFile.string());
+		logger::error("ERROR: missed or empty {}", RaceDataFile.string());
 	}
 
 	// Основной цикл
@@ -102,7 +109,7 @@ void parse_files(const std::filesystem::path& from, std::vector<XMLfile>& xmls, 
 			}
 			process_file(entry.path().string(), xmls, skipped);
 		} catch (const std::exception& e) {
-			LOG("Error processing {}: {}", entry.path().string(), e.what());
+			logger::error("Error processing {}: {}", entry.path().string(), e.what());
 		}
 	}
 }
@@ -153,10 +160,10 @@ void START(const std::filesystem::path& from)
 	parse_files(from, store, skipped);
 
 	/*for_each_file(store, [&](XMLfile& x) {
-		LOG("{} - {}", x.filename(), x.get_root());	
+		logger::info("{} - {}", x.filename(), x.get_root());	
 	},"");*/
 
-	LOG("Start parsing data...");
+	logger::info("Start parsing data...");
 
 	std::vector<std::shared_ptr<std::stringstream>> xfiles;
 	xfiles.reserve(store.size());
@@ -170,9 +177,13 @@ void START(const std::filesystem::path& from)
 	fixes::merge_positions_optionals();
 
 	NAFicator::parse_XML_files(xfiles);
-	if (voodoo_ready)
-		AfterGameDataReady();
-	voodoo_ready = true;
+
+	if (voodoo_ready.exchange(true) == false) {
+		return;
+	}
+
+	AfterGameDataReady();
+	logger::info("🧐 NAFicator finished!");
 }
 
 void for_each_file(std::vector<XMLfile>& xmls, std::function<void(XMLfile&)> apply, const std::string& rootNode)

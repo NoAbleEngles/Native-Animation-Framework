@@ -14,7 +14,6 @@
 #include "PositionTree.h"
 #include "ProtectedEquipment.h"
 #include "Race.h"
-#include "NAFicator/SimpleLog/slog.hpp"
 #include <IniParser/Ini.h>
 
 extern ini::map inimap;
@@ -331,7 +330,7 @@ namespace NAFicator
 		const pugi::xml_parse_result result = doc.load_buffer(buffer.data(), buffer.size());
 
 		if (!result) {
-			LOG("Failed to parse, message: {} at character {}", result.description(), result.offset);
+			logger::error("❌ Failed to parse, message: {} at character {}", result.description(), result.offset);
 			return false;
 		}
 
@@ -342,6 +341,18 @@ namespace NAFicator
 				return !std::strcmp(attrib.name(), "filename");
 			})
 		.as_string("");
+
+		if (topNode.empty()) {
+			return false;
+		}
+
+		if (root_node.empty()) {
+			return false;
+			}
+
+		if (filename.empty()) {
+			return false;
+		}
 
 		for (const auto& n : nodeMapping) {
 			if (auto data = doc.child(n.first.data()); !data.empty()) {
@@ -406,23 +417,23 @@ namespace NAFicator
 					pe(m);
 					break;
 				default:
-					LOG("Unknown object type. Filename {}", filename);
+					logger::warn("❌ Unknown object type. Filename {}", filename);
 					continue;  // Пропустить итерацию, если тип не известен
 				}
 
 				if (obj && obj->is_valid()) {
 					std::ostringstream s;
-					LOG("Parsed success : {} - {}", filename, root_node);
+					logger::info("✅ Parsed success : {} - {}", filename, root_node);
 					priority_insert(obj);
 				} else {
 					if (get_type(root_node) == kProtectedEquipment)
-						LOG("Parsed success : {} - {}", filename, root_node);
+						logger::info("✅ Parsed success : {} - {}", filename, root_node);
 					else
-						LOG("Invalid object. Filename {}", filename);
+						logger::warn("❌ Invalid object. Filename {}", filename);
 				}
 			}
 		} else {
-			LOG("Not valid root node : {}, file : {}", root_node, filename);
+			logger::error("❌ Not valid root node : {}, file : {}", root_node, filename);
 			return false;
 		}
 		return true;
@@ -526,12 +537,10 @@ namespace fixes
 						auto idle = dynamic_pointer_cast<IdleForm>(f);
 						if (idle)
 						{
-							auto hkx_path = idle->hkx();
+							auto hkx_path = utils::string::trim(idle->hkx(), " \t\r\n");
 							//can be empty.
-							/*if (hkx_path.empty() || HkxFileExists(hkx_path)) {*/
-								a.hkx = hkx_path;
-								continue;
-							/*}*/
+							a.hkx = hkx_path;
+							continue;
 						}
 					}
 				 
@@ -539,11 +548,9 @@ namespace fixes
 						tesform && tesform->formType == RE::ENUM_FORM_ID::kIDLE)
 					{
 						auto hkx_path = std::string(tesform->animFileName.c_str());
-						/*if (hkx_path.empty() || HkxFileExists(hkx_path)) {*/
-							a.hkx = hkx_path;
-							put(std::make_shared<IdleForm>(form, src, a.hkx.value()));
-							continue;
-						/*}*/
+						a.hkx = utils::string::trim(hkx_path, " \t\r\n");
+						put(std::make_shared<IdleForm>(form, src, a.hkx.value()));
+						continue;
 					}
 				}
 			}
@@ -700,7 +707,7 @@ namespace fixes
 				outFile << oss.str();
 				outFile.close();
 			} catch (const std::exception& e) {
-				LOG("Error: {}", e.what());
+				logger::error("❌ save_to_file: {}", e.what());
 			}
 		};
 
@@ -762,6 +769,7 @@ namespace fixes
 
 	void print_all()
 	{
+		logger::info("⚙️ Formatting parsed objects to XML...");
 		for_every_type(kNone, [&](std::pair<RE::BSSpinLock, std::shared_ptr<ParsedObject>>& o) {
 				auto& [l, ptr] = o;
 				if (skip(ptr->get_type())) {
@@ -777,13 +785,16 @@ namespace fixes
 		for (const auto& t : types_to_print) {
 			save_to_file(t);
 		}
+		logger::info("✅ Formatting parsed objects to XML... done");
 	}
 
 	void hkxficate()
 	{
+		logger::info("⚙️ HKXficating...");
 		for_every_type(kAnimation, [](std::pair<RE::BSSpinLock, std::shared_ptr<ParsedObject>> obj) {
 			replace_formid_to_hkx(obj);
 		});
+		logger::info("✅ HKXficating... done");
 	}
 
 	void remove_objects_linked_to_this_animation(const std::string& animation_id)
@@ -923,6 +934,7 @@ namespace fixes
 
 	void remove_missed_animations()
 	{
+		logger::info("⚙️ Removing missed animations...");
 		remove_positions_with_missed_links(CheckFlags::Animation);
 		remove_animation_groups_with_missed_animation_links();
 		remove_position_trees_with_missed_animation_links();
@@ -931,14 +943,17 @@ namespace fixes
 		remove_positions_with_missed_links(CheckFlags::Group | CheckFlags::Tree);
 		remove_position_trees_with_missed_animation_links();
 		remove_positions_with_missed_links(CheckFlags::Tree);
+		logger::info("✅ Removing missed animations... done");
 	}
 
 	void check_and_clear_furniture_bad_links() 
 	{
+		logger::info("⚙️ Checking furniture links...");
 		for_every_type(kFurniture, [](std::pair<RE::BSSpinLock, std::shared_ptr<ParsedObject>>& obj) {
 			auto f = static_cast<Furniture*>(obj.second.get());
 			f->check_links_to_forms_and_clear_badlinks();
 		});
+		logger::info("✅ Checking furniture links... done");
 	}
 
 	void update_tags()
@@ -961,7 +976,8 @@ namespace fixes
 
 			pos->tags.erase("nofurn");
 		};
-		
+
+		logger::info("⚙️ Updating position tags...");
 		for_every_type(kPosition, [update_tags_based_on_locations](std::pair<RE::BSSpinLock, std::shared_ptr<ParsedObject>>& obj) {
 			auto& [l, ptr] = obj;
 			auto pos = static_cast<Position*>(ptr.get());
@@ -978,6 +994,7 @@ namespace fixes
 
 			update_tags_based_on_locations(pos);
 		});
+		logger::info("✅ Updating position tags... done");
 	}
 
 	void merge_positions_optionals()

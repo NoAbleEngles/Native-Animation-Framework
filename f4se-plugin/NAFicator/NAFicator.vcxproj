@@ -188,7 +188,6 @@
     <ClInclude Include="..\extern\NAFicator\Objects\ProtectedEquipment.h" />
     <ClInclude Include="..\extern\NAFicator\Objects\Race.h" />
     <ClInclude Include="..\extern\NAFicator\Objects\Tag.h" />
-    <ClInclude Include="..\extern\NAFicator\SimpleLog\slog.hpp" />
     <ClInclude Include="..\extern\NAFicator\ThreadPool\Queue\Queue.hpp" />
     <ClInclude Include="..\extern\NAFicator\ThreadPool\ThreadPool.h" />
     <ClInclude Include="..\extern\NAFicator\Version.h" />

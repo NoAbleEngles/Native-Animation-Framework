@@ -8,16 +8,14 @@
 #include "NAFicator/Version.h"
 #include <NAFicator/Objects/objects_map.h>
 #include <NAFicator/Version.h>
-#include <NAFicator/SimpleLog/slog.hpp>
 
 
 extern ini::map inimap;
-#define LOG slog::getInstance()
 
 XMLfile::XMLfile(const std::filesystem::path& source_file) :
 	source(source_file)
 {
-	LOG("Opening file {} ...", source_file.filename().string());
+	logger::info("Opening file {} ...", source_file.filename().string());
 
 	if (!std::filesystem::exists(source)) {
 		source = "";
@@ -51,9 +49,9 @@ XMLfile::XMLfile(const std::filesystem::path& source_file) :
 	normalize();
 
 	if (hasValue)
-		LOG("normalize... success\nprepare to make objects...");
+		logger::info("normalize... success\nprepare to make objects...");
 	else
-		LOG("{} normalize... failed, file skipped", filename());
+		logger::error("{} normalize... failed, file skipped", filename());
 }
 
 void XMLfile::for_each_string(std::function<void(std::vector<std::string>::iterator&, XMLfile*)> do_work_with_string)
@@ -325,7 +323,7 @@ void XMLfile::process_duplicate_attributes()
 
 		for (auto i = attrs.begin(); i != attrs.end();) {
 			if (!store.insert(i->first).second) {
-				LOG("'fix_duplicate_attributes' removed: {}=\"{}\"", i->first, i->second);
+				logger::info("'fix_duplicate_attributes' removed: {}=\"{}\"", i->first, i->second);
 				i = attrs.erase(i);
 			} else {
 				++i;
@@ -442,7 +440,7 @@ std::string_view XMLfile::process_root_node_extraction()
 				auto i = buffer.end();
 				while (i != buffer.begin() && std::prev(i)->empty()) i--;
 				if (i == buffer.begin()) {
-					LOG("No nodes in xml file {}", filename());
+					logger::warn("No nodes in xml file {}", filename());
 					return root_node = "";
 				}
 				if (i == buffer.end())	{
@@ -523,13 +521,13 @@ bool XMLfile::normalize()
 
 void XMLfile::send_warning(std::string_view warn)
 {
-	LOG("File : {}, warn : {}", source.filename().string(), warn);
+	logger::warn("File : {}, warn : {}", source.filename().string(), warn);
 }
 
 void XMLfile::set_critical_error(std::string_view error)
 {
 	hasValue = false;
-	LOG("File : {}, error : {}", source.filename().string(), error);
+	logger::error("File : {}, error : {}", source.filename().string(), error);
 }
 
 std::shared_ptr<std::stringstream> XMLfile::make_stringstream() const
@@ -572,7 +570,7 @@ void XMLfile::print_to_file() const
 	// Создаем поток для записи в файл
 	std::ofstream output_file(output_path);
 	if (!output_file.is_open()) {
-		LOG("Failed to open file for writing: {}", output_path.string());
+		logger::critical("Failed to open file for writing: {}", output_path.string());
 		return;
 	}
 
@@ -583,5 +581,5 @@ void XMLfile::print_to_file() const
 	// Закрываем файл
 	output_file.close();
 
-	LOG("Successfully written to file: {}", output_path.string());
+	logger::info("Successfully written to file: {}", output_path.string());
 }

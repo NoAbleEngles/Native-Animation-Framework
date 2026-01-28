@@ -907,9 +907,9 @@ namespace Data
 				set->Apply(a);
 			}
 		}
-		//NAF Bridge actor handle
-		if (mfgSet.has_value()) {
-			if (auto mfg = GetFaceAnim(mfgSet.value()); mfg != nullptr) {
+		//NAF Bridge actor handle - use stopMfgSet instead of mfgSet
+		if (stopMfgSet.has_value()) {
+			if (auto mfg = GetFaceAnim(stopMfgSet.value()); mfg != nullptr) {
 				mfg->Stop(RE::ActorHandle(a));
 			}
 		}

@@ -28,9 +28,6 @@
     <Filter Include="NAFICATOR\Pugi">
       <UniqueIdentifier>{d9dfd2fd-4db9-4763-a400-828f07b523a6}</UniqueIdentifier>
     </Filter>
-    <Filter Include="NAFICATOR\SimpleLogger">
-      <UniqueIdentifier>{b7929b28-e08b-48aa-b8cf-421b3688d37e}</UniqueIdentifier>
-    </Filter>
     <Filter Include="NAFICATOR\ThreadPool">
       <UniqueIdentifier>{d2d8ebcc-e90c-4a3a-a711-d4129234ad50}</UniqueIdentifier>
     </Filter>
@@ -175,9 +172,6 @@
     </ClInclude>
     <ClInclude Include="..\extern\NAFicator\Objects\Tag.h">
       <Filter>NAFICATOR\Objects</Filter>
-    </ClInclude>
-    <ClInclude Include="..\extern\NAFicator\SimpleLog\slog.hpp">
-      <Filter>NAFICATOR\SimpleLogger</Filter>
     </ClInclude>
     <ClInclude Include="..\extern\NAFicator\ThreadPool\ThreadPool.h">
       <Filter>NAFICATOR\ThreadPool</Filter>

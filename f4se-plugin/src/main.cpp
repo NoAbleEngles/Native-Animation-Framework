@@ -472,7 +472,7 @@ void ReadIni()
 		m.push_back(std::tuple("1"s, "bSwapFemaleActorInArray"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bHideHud"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bSlowDrying"s, "Settings"s));
-		m.push_back(std::tuple("1"s, "bCheckFor3dLoaded"s, "Settings"s));
+		m.push_back(std::tuple("2"s, "iCheckFor3dLoaded"s, "Settings"s));
 		m.push_back(std::tuple("0"s, "bOverrideEmptyInclTags"s, "Settings"s));
 		m.push_back(std::tuple("1"s, "bAnimateFannies"s, "Settings"s));
 		m.push_back(std::tuple("3"s, "bDebugLevel"s, "Settings"s));

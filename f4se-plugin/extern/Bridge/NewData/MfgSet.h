@@ -43,10 +43,10 @@ namespace Data
 			}
 
 			FaceAnimation::FrameBasedAnimData data;
-			data.duration = 0.01f;
+			data.duration = 1;
 			m.GetArray([&](XMLUtil::Mapper& m) {
 				int32_t frame = 0;
-				
+
 				uint8_t mId = 0;
 				m(&mId, (uint8_t)0, false, true, "MfgSet morphID has no 'morphID' attribute!", "morphID");
 
