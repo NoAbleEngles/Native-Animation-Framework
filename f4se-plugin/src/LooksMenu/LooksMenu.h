@@ -433,6 +433,15 @@ namespace LooksMenu
 			detail::g_bodyMorphInterface->RemoveMorphsByKeyword(actor, isFemale, keyword);
 		}
 	}
+
+	float GetMorph(RE::Actor* actor, const RE::BSFixedString& morph, RE::BGSKeyword* keyword)
+	{
+		if (isInstalled && actor && detail::g_bodyMorphInterface) {
+			bool isFemale = (actor->GetSex() == RE::Actor::Sex::Female);
+			return detail::g_bodyMorphInterface->GetMorph(actor, isFemale, morph, keyword);
+		}
+		return 0.0f;
+	}
 }
 
 #pragma warning(pop)

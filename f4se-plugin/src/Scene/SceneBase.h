@@ -384,7 +384,6 @@ namespace Scene
 					if (!(RE::PlayerCamera::GetSingleton()->currentState.get()->STATE & RE::CameraState::kFree)) {
 						RE::PlayerCamera::GetSingleton()->ToggleFreeCameraMode(false);
 					}
-					player->Reset3D(false, RE::RESET_3D_FLAGS::kModel, false, RE::RESET_3D_FLAGS::kNone); //NAF Bridge fix for player disappearing
 					player->StopMoving(5.0f);
 				}
 
@@ -935,7 +934,7 @@ namespace Scene
 				}
 			}
 
-			fannyAnim.Update(0.01f);  //0.16f ~ 60 FPS
+			fannyAnim.Update(0.32f);  //0.16f ~ 60 FPS
 
 			size_t actor_count = 0; //NAFBridge offset
 			ForEachActor([&](RE::Actor* currentActor, ActorPropertyMap& props) {

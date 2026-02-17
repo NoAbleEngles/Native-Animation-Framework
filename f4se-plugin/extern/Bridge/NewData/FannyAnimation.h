@@ -455,7 +455,7 @@ namespace Data
 				logger::warn("FannyAnimation: Fallback configuration not loaded, using hardcoded defaults.");
 			}
 
-			// Если ничего не загрузилось - используем hardcoded defaults
+			// Если ничего не загрузилось - использем hardcoded defaults
 			if (!mainLoaded && !fallbackLoaded) {
 				logger::warn("FannyAnimation: Using hardcoded default configuration");
 			}
@@ -912,7 +912,7 @@ namespace Data
 		// MORPH APPLICATION
 		// ============================================================================
 
-		static void ApplyMorphs(RE::Actor* actor, const ReceiverState& state)
+		static void ApplyMorphs(RE::Actor* actor, ReceiverState& state)
 		{
 			if (!actor || !LooksMenu::isInstalled)
 				return;
@@ -921,15 +921,30 @@ namespace Data
 			if (!kwd)
 				return;
 
-			for (const auto& [morphName, value] : state.currentMorphValues) {
-				if (value > 0.001f) {
-					LooksMenu::SetMorph(actor, morphName.c_str(), kwd, value);
-				} else {
-					LooksMenu::RemoveMorphsByName(actor, morphName.c_str());
+			static constexpr float MORPH_CHANGE_THRESHOLD = 0.1f;
+
+			bool needUpdate = false;
+
+			for (const auto& [morphName, currentValue] : state.currentMorphValues) {
+				// Получаем текущее значение морфа через LooksMenu API
+				RE::BSFixedString morphFixedStr(morphName.c_str());
+				float lastAppliedValue = LooksMenu::GetMorph(actor, morphFixedStr, kwd);
+
+				// Вычисляем разницу
+				float valueDiff = std::abs(currentValue - lastAppliedValue);
+
+				// Применяем морф только если разница превышает порог
+				if (valueDiff > MORPH_CHANGE_THRESHOLD) {
+					if (currentValue > 0.001f) {
+						LooksMenu::SetMorph(actor, morphFixedStr, kwd, currentValue);
+					} else {
+						LooksMenu::RemoveMorphsByName(actor, morphFixedStr);
+					}
+					needUpdate = true;
 				}
 			}
 
-			LooksMenu::UpdateMorphs(actor);
+			if (needUpdate) LooksMenu::UpdateMorphs(actor);
 		}
 
 		static void ResetMorphs(RE::Actor* actor)
